@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Loud Howard</title>
+  <link rel="stylesheet" href="lib/bootstrap/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="css/app.css"/>
+</head>
+<body ng-controller="GenController" ng-cloak>
+  <script src="lib/jquery/jquery-1.8.3.min.js"></script>
+  <script src="lib/bootstrap/js/bootstrap.min.js"></script>
+  <script src="lib/angular/angular.js"></script>
+  <!-- In production use:
+  <script src="http://ajax.googleapis.com/ajax/libs/angularjs/1.0.3/angular.min.js"></script>
+  -->
+
+  <!-- Allows for coffeescript compiling on the fly.                                    -->
+  <!-- Not recommended for production use. See http://coffeescript.org/#scripts.        -->
+  <script src="lib/coffeescript/coffee-script.js"></script>
+  <script src="lib/dom_text_mapper/dom_text_mapper.coffee" type="text/coffeescript"></script>
+  <script src="lib/dom_text_matcher/dom_text_hiliter.coffee" type="text/coffeescript"></script>
+  <script src="lib/dom_text_matcher/dom_text_matcher_angular.coffee" type="text/coffeescript"></script>
+
+  <script src="coffee/wait_indicator.coffee" type="text/coffeescript"></script>
+  <script src="coffee/services.coffee" type="text/coffeescript"></script>
+  <script src="coffee/directives.coffee" type="text/coffeescript"></script>
+  <script src="coffee/filters.coffee" type="text/coffeescript"></script>
+  <script src="coffee/controllers.coffee" type="text/coffeescript"></script>
+  <script src="coffee/app.coffee" type="text/coffeescript"></script>
+
+
+    <!-- TODO: make this into a directive -->
+    <div id="wait-indicator-dialog" class="modal hide" tabindex="-1" role="dialog" aria-labelledby="waitTitleLabel" aria-hidden="true">
+      <div class="modal-header">
+	<button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+	<h3 id="waitTitleLabel">{{waitIndicatorTitle}}</h3>
+      </div>
+      <div class="modal-body">
+	<p>{{waitIndicatorText}}</p>
+      </div>
+      <div class="modal-footer">
+	<button class="btn" data-dismiss="modal" aria-hidden="true">Cancel</button>
+      </div>
+    </div>
+
+    <div class="navbar navbar-inverse">
+      <div class="navbar-inner">
+	<a class="brand" href="#">Loud Howard</a>
+
+	<form id="source-document-form" class="form-inline navbar-form pull-left" ng-submit="urlEdited()">
+	  <input type="url" ng-model="wantedURL" class="input-xxlarge" placeholder="http://www.something.com/interesting/article"/>
+	  <button title="Go fetch" type="submit" class="btn btn-small btn-primary">
+	    <i class="icon-circle-arrow-right"></i>
+	  </button>	    
+	</form>
+
+	<form id="part-select-form" ng-show="paths" class="form-inline navbar-form pull-left" ng-submit="checkPaths()">
+	  <label>Part to annotate:</label>
+	  <select ng-model="selectedPath" ng-options="path as path + ' (' + paths[path].summary +')' for path in offeredPaths" class="input-large"></select>
+	  <label>(>=</label>
+	  <input type="number" ng-model="candidateMinLength" min="1" required="true" class="input-mini"/>
+	  <label>chars)</label>
+	  <button title="Filter candidates" type="button" class="btn btn-small" ng-click="checkPaths()">
+	    <i class="icon-filter"></i>
+	  </button>	    
+	</form>
+
+	<form class="form-inline navbar-form pull-left" ng-submit="generateAnnotations()" id="annotation-config-form" ng-show="paths">
+	  <button title="Generate annotations" type="submit" class="btn btn-primary">
+	    <i class="icon-comment"></i>
+	    Generate
+	  </button>	    
+	  <input type="number" ng-model="numAnnotations" min="1" required="true" class="input-mini"/>
+	  <label>annotations with anchor length</label>
+	  <input type="number" ng-model="minLength" min="1" required="true" class="input-mini"/>
+	  <label>-</label>
+	  <input type="number" ng-model="maxLength" min="1" required="true" class="input-mini"/>
+	  <label>(Distribution:</label>
+	  <label class="radio">
+	    <input type="radio" ng-model="distribution" value="uniform" />
+	    Uniform
+	  </label>
+	  <label class="radio">
+	    <input type="radio" ng-model="distribution" value="gauss" disabled="true" />
+	    Gauss
+	  </label>
+	  <label class="radio">
+	    <input type="radio" ng-model="distribution" value="boltzmann" disabled="true" />
+	    Boltzmann
+	  </label>
+	  <label>; </label>
+	  <label class="checkbox">
+	    <input type="checkbox" ng-model="selectWholeWords"/>
+	    Extend to whole words
+	  </label>	
+	  <label>)</label>
+	</form>
+
+	<form id="annotation-save-form" class="form-inline navbar-form pull-left" ng-show="annotations" ng-submit="saveAnnotations()">
+	  <button title="Save annotations" type="submit" class="btn btn-danger">
+	    <i class="icon-book"></i>
+	    Save
+	  </button>	    
+	  <label class="radio" ng-show="devMode">
+	    <input type="radio" ng-model="targetServer" value="localhost" />
+	    localhost
+	  </label>
+	  <label class="radio">
+	    <input type="radio" ng-model="targetServer" value="dev" />
+	    dev.h
+	  </label>
+	  <label class="radio">
+	    <input type="radio" ng-model="targetServer" value="tests" />
+	    test.h
+	  </label>
+	</form>
+	
+      </div>
+    </div>
+
+    <div id="article-container">
+      <iframe
+	 ng-show="sourceURL"
+	 id="loud-howard-article-box" ng-src="{{sourceURL}}" 
+	 onload="if (typeof(loudHowardUrlLoaded) != 'undefined') { loudHowardUrlLoaded(); }">
+      </iframe>
+    </div>
+
+</body>
+</html>

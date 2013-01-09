@@ -1,0 +1,48 @@
+/* app css stylesheet */
+
+
+#selected-text-box {
+    width: 400px;
+}
+
+#source-document-form, part-select-form, #annotation-config-form, #annotation-save-form {
+    padding-right: 1em;
+    padding-left: 1em;
+    margin-bottom: 0.25em;
+}
+
+#wait-dialog {
+    border: 1px solid #DDD;
+    padding: 1em;
+    margin: 0.5em;
+    -webkit-border-radius: 4px;
+    -moz-border-radius: 4px;
+    border-radius: 4px;
+}
+
+.popover {
+    width: 400px;
+}
+
+.navbar {
+    margin-bottom: 0px;
+}
+
+#article-container {
+    overflow: hidden;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: 160px;
+}
+
+#loud-howard-article-box {
+    border: none;
+    width: 100%;
+    height: 100%;
+}
+
+.navbar-inverse label {
+    color: #999999;
+}

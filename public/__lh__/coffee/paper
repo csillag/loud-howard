@@ -1,0 +1,8 @@
+
+      @wantedURL = "http://en.wikipedia.org/wiki/Breast#Shape_and_support"
+#      @wantedURL = "http://en.wikipedia.org/wiki/Special:Search/Big_Tits"
+
+
+
+- When clicking on a link, and new page is loaded, not all processes are run as they should
+- Proxy session should have a timeout
