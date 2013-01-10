@@ -9,6 +9,7 @@ class GenController
   LH_PATH = "/" + LH_PREFIX
   PATH_PREFIX_LENGTH = "/html/body".length
   PATH_SUFFIX = "/text()"
+  SAVE_WAIT_SECS = 1
         
   this.$inject = ['$scope', '$http', '$timeout', '$document', 'domTextMapper', 'domTextHiliter', 'waitIndicator']
   constructor: ($scope, $http, $timeout, $document, domTextMapper, domTextHiliter, waitIndicator) ->
@@ -306,6 +307,28 @@ class GenController
         @wait.finished()
         if @task? then @hiliter.undo @task
         delete @annotations
+
+    $scope.saveAnnotation = (annotation) ->
+      console.log "Sending save request..."
+      url = "http://" + @serverHost + ":" + @serverPort + "/api/current/annotations"
+      $http.post(url, annotation)
+        .success (data, status, headers, config) =>
+          console.log data
+          @annotationSaved()
+        .error (data, status, headers, config) =>
+           console.log "Error!"
+           switch status
+             when 0 then alert "Could not connect to server!"
+             when 401
+               console.log data        
+               alert "Access denied. That means an authentication problem with the server..."
+             else
+               console.log "Unknown error while saving annotation:"
+               console.log data
+               console.log status
+               console.log headers
+               console.log config
+           @annotationSaved()                
         
     $scope.saveAnnotations = ->
       @wait.set "Saving…", "Please wait while saving the annotations!"
@@ -313,26 +336,10 @@ class GenController
       console.log @annotations
       @pendingSaveCount = @annotations.length
       $http.defaults.headers.post["x-annotator-auth-token"] = @token
-      url = "http://" + @serverHost + ":" + @serverPort + "/api/current/annotations"
+      t = 0
       for annotation in @annotations
-        $http.post(url, annotation)
-          .success (data, status, headers, config) =>
-            console.log data
-            @annotationSaved()
-          .error (data, status, headers, config) =>
-             console.log "Error!"
-             switch status
-               when 0 then alert "Could not connect to server!"
-               when 401
-                 console.log data        
-                 alert "Access denied. That means an authentication problem with the server..."
-               else
-                 console.log "Unknown error while saving annotation:"
-                 console.log data
-                 console.log status
-                 console.log headers
-                 console.log config
-             @annotationSaved()                
+        $timeout (=> @saveAnnotation annotation), t*1000
+        t += SAVE_WAIT_SECS
 
     $scope.getLoginStatus()
 
