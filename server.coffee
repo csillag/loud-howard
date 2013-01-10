@@ -88,7 +88,7 @@ class AnnoStorage
         
  
 # Settings
-MAIN_PORT = 8000
+MAIN_PORT = 8080
 LH_PREFIX = "__lh__"
 LH_PATH = "/" + LH_PREFIX
 SESSION_TIME = 3600 * 1000
