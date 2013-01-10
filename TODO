@@ -2,8 +2,6 @@
 Absolutely:
 
 - Fix the XPath dialect problem (and any other format inconsistencies)
-- Make the tool wait a few seconds between saving the annotations
-- Annotation-store: add an API on the backend that supports saving several annotations in one step.
 - Fix the FF incompatibility problem
 - Make a "production" installation, which serves minified JS files.
 - Add support for generating threads
@@ -16,6 +14,7 @@ Absolutely:
 Later:
 
 - Clean up the code of the tool.
+- Annotation-store: add an API on the backend that supports saving several annotations in one step.
 - Improve session timeout handling
    - false positive (when trying to navigate via dead proxy)
    - false negative (whan can't load app))
