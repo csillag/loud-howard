@@ -8,6 +8,7 @@ class GenController
   LH_PREFIX = "__lh__"
   LH_PATH = "/" + LH_PREFIX
   PATH_PREFIX_LENGTH = "/html/body".length
+  PATH_SUFFIX = "/text()"
         
   this.$inject = ['$scope', '$http', '$timeout', '$document', 'domTextMapper', 'domTextHiliter', 'waitIndicator']
   constructor: ($scope, $http, $timeout, $document, domTextMapper, domTextHiliter, waitIndicator) ->
@@ -19,8 +20,6 @@ class GenController
         
     $scope.init = ->
       @domMapper = domTextMapper.getInstance()   
-
-      if AUTO_MODE then @wantedURL = "http://en.wikipedia.org/wiki/Criteria_of_truth"
 
       @loadSettings = false
       @documentExplanation = "Loading of this document started with the specified URL, but we are not detecting whether it was redirected somewhere else. So the loaded document might not correspond to the specified URL."
@@ -36,7 +35,9 @@ class GenController
       @selectWholeWords = true
       @annotationBodyText = "AUTO-GENERATED TEST ANNOTATION"
       @devMode = document.location.hostname is "localhost"
+      AUTO_MODE = @devMode
       @targetServer = "hypotest"
+      if AUTO_MODE then @wantedURL = "http://en.wikipedia.org/wiki/Criteria_of_truth"
 
     $scope.init()
 
@@ -208,11 +209,23 @@ class GenController
         anchor.endGlobal = anchor.end + offset
         anchor.mappings = @domMapper.getMappingsFor anchor.startGlobal, anchor.endGlobal
 
+      console.log "Generated anchors."
+
       @task = ranges: (nodes: anchor.mappings.nodes for anchor in @anchors)
       @hiliter.highlight @task
 
       @annotations = (@createAnnotation anchor for anchor in @anchors)
+      console.log "Generated annotations."
+
 #      if AUTO_MODE then @saveAnnotations()
+
+    $scope.transformPath = (path) ->
+      path = path.substr PATH_PREFIX_LENGTH
+      if path.length >= PATH_SUFFIX.length
+        pathEnd = path.substr path.length - PATH_SUFFIX.length
+        if pathEnd is PATH_SUFFIX
+          path = path.substr 0, path.length - PATH_SUFFIX.length
+      path
 
     $scope.createAnnotation = (anchor) ->
       ts = (new Date()).toString()
@@ -222,8 +235,8 @@ class GenController
         qoute: anchor.text
         uri: @wantedURL
         ranges: [
-          start: anchor.mappings.rangeInfo.startPath.substr PATH_PREFIX_LENGTH
-          end: anchor.mappings.rangeInfo.endPath.substr PATH_PREFIX_LENGTH
+          start: @transformPath anchor.mappings.rangeInfo.startPath
+          end: @transformPath anchor.mappings.rangeInfo.endPath
           startOffset: anchor.mappings.rangeInfo.startOffset
           endOffset: anchor.mappings.rangeInfo.endOffset
         ]
