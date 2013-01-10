@@ -4,6 +4,89 @@ path = require 'path'
 httpProxy = require 'http-proxy'
 url = require 'url'
 
+class AnnoStorage
+
+  SID = "beaker.session.id"
+  BADPW = 'Invalid username or password.'
+  INTERR = "internal error"
+
+  constructor: ->
+
+  login: (hHost, hPort, userName, passWord, cb, cookies=null) ->
+        
+    data = "__formid__=login&username=" + userName + "&password=" + passWord
+
+    options =
+      hostname: hHost
+      port: hPort
+      path: "/app/"
+      method: "POST"
+      headers:
+        'Content-Type': 'application/x-www-form-urlencoded'
+        'Content-Length': data.length
+
+    if cookies?
+      xsrf = cookies["XSRF-TOKEN"]
+      options.headers["X-XSRF-TOKEN"] = xsrf
+      options.headers["Cookie"] = SID + "=" + cookies[SID] + "; XSRF-TOKEN=" + xsrf
+   
+#    console.log "Sending request: "
+#    console.log options
+#    console.log data
+
+    req = http.request options, (res) =>
+#      console.log "Status: " + res.statusCode
+#      console.log "Headers"
+#      console.log res.headers
+      res.on 'data', (chunk) =>
+        try
+          result = JSON.parse chunk
+        catch error
+          console.log "Server responded with invalid JSON. We have sent this: "
+          console.log options
+          console.log "Got this:"
+          console.log chunk
+          cb status: INTERR
+        if result? then switch result.status
+          when "okay"
+#            console.log "SUCCESS!!!"
+#            console.log result
+            cb {status: "success", token: result.model.token}
+          when "failure"
+            if result.error?.csrf_token?
+#              console.log "OK, we need fix CSRF..."
+              cookies = {}
+              for c in res.headers["set-cookie"]
+                ps1 = c.split "="
+                cookies[ps1[0]] = (ps1[1].split ";")[0]
+#              console.log cookies
+              @login hHost, hPort, userName, passWord, cb, cookies
+            else if result.reason is BADPW
+#              console.log "Password is wrong."
+              cb status: "bad password"
+            else
+              console.log "Unknown error: "
+              console.log result
+              cb status: INTERR
+          else
+            console.log "Unknown status: "
+            console.log result
+            cb status: INTERR
+
+#        console.log d
+#        if chunk is E1
+           
+#        console.log 'BODY: ' + chunk
+#      console.log "Skipping body: " + chunk.length + " chars."
+
+    req.on 'error', (e) ->
+      console.log 'problem with request: ' + e.message
+      console.log e
+      cb status: "connection error"
+    req.write data
+    req.end()
+        
+ 
 # Settings
 MAIN_PORT = 8000
 LH_PREFIX = "__lh__"
@@ -16,47 +99,11 @@ parseLocation = (urlString) ->
   u = url.parse urlString
   [u.hostname, u.port ? 80, u.path + (u.hash ? "")]
 
-login = (hHost, hPort, userName, passWord) ->
-  options =
-    hostname: hHost
-    port: hPort
-    path: "/app/"
-    method: "POST"
-    headers: {'Content-Type': 'application/x-www-form-urlencoded'}
-
-  data = "__formid__=login&username=" + userName + "&password=" + passWord
-
-  console.log "Sending request: "
-  console.log options
-  console.log data
-
-  req = http.request options, (res) ->
-    console.log "Status: " + res.statusCode
-    console.log "Headers"
-#    console.log JSON.stringify res.headers
-    console.log res.headers
-    res.setEncoding 'utf8'
-    res.on 'data', (chunk) ->
-#      console.log 'BODY: ' + chunk
-      console.log "Skipping body: " + chunk.length + " chars."
-
-  req.on 'error', (e) -> console.log 'problem with request: ' + e.message
-  req.write data
-  req.end()
-        
-  console.log "Req sent."
-  console.log "Req headers: "
-  console.log req.headers
-
-#login "localhost", 5000, "LoudHoward2", "lemmeshout"
-login "dev.hypothes.is", 80, "LoudHoward2", "lemmeshout"
-#login "www.nodejitsu.com", 1337, "TestUname", "TestPassword"
-
-return
 # Set up app
 # 
 app = express()
 proxy = new httpProxy.RoutingProxy()
+storage = new AnnoStorage()
 
 app.configure ->
   app.set 'port', MAIN_PORT
@@ -73,6 +120,32 @@ app.configure 'development', -> app.use express.errorHandler()
 
 app.get LH_PATH + '/loading', (req, res) -> res.send "Loading..."
 
+app.get LH_PATH + "/login_status", (req, res) -> res.send
+  host: req.session.hHost ? "none"
+  port: req.session.hPort ? "none"
+  user: req.session.hUser ? "none"
+  token: req.session.hToken ? "none"
+
+app.post LH_PATH + '/login', (req, res) ->
+  console.log "Should login:"
+  console.log req.body
+  storage.login req.body.host, req.body.port, req.body.user, req.body.pass, (result) ->
+    console.log "Login result: "
+    console.log result
+    if result.status is "success"
+      req.session.hHost = req.body.host
+      req.session.hPort = req.body.port
+      req.session.hUser = req.body.user
+      req.session.hToken = result.token
+    res.send result
+
+app.post LH_PATH + '/logout', (req, res) ->
+  delete req.session.hHost
+  delete req.session.hPort
+  delete req.session.hUser
+  delete req.session.hToken
+  res.send "OK"
+        
 app.get LH_PATH + '/redirect', (req, res) ->
   console.log "Arrived to redirector."
   if req.session.redirectLocation?

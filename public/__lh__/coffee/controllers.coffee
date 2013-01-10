@@ -2,7 +2,7 @@
 
 class GenController
 
-  AUTO_MODE = true
+  AUTO_MODE = false
 
   BORDER_CHARS = " ,.!?+-/*()$%&;:"
   LH_PREFIX = "__lh__"
@@ -15,19 +15,12 @@ class GenController
     $http.get(LH_PATH + "/forget_proxy").success (data) =>
       console.log "Reseted proxy"
 
-    $document.find("#help1").popover(html:true)
-
     window.wtfscope = $scope
         
     $scope.init = ->
       @domMapper = domTextMapper.getInstance()   
-#      @wantedURL = "http://www.google.com"
-#      @wantedURL = "http://google.hu"
-#      @wantedURL = "http://index.hu/belfold/2013/01/04/egymast_martjak_be_a_birosagi_vegrehajtok/"
-#      @wantedURL = "http://index.hu/belfold"
 
-      if AUTO_MODE then @wantedURL = "http://en.wikipedia.org/wiki/Breast"
-#      @wantedURL = "http://en.wikipedia.org/wiki/Truth"
+      if AUTO_MODE then @wantedURL = "http://en.wikipedia.org/wiki/Criteria_of_truth"
 
       @loadSettings = false
       @documentExplanation = "Loading of this document started with the specified URL, but we are not detecting whether it was redirected somewhere else. So the loaded document might not correspond to the specified URL."
@@ -41,10 +34,9 @@ class GenController
       @minLength=3
       @maxLength=50
       @selectWholeWords = true
-      @annotationUser = "LoudHoward"
       @annotationBodyText = "AUTO-GENERATED TEST ANNOTATION"
       @devMode = document.location.hostname is "localhost"
-      @targetServer = if @devMode then "localhost" else "dev"
+      @targetServer = "hypotest"
 
     $scope.init()
 
@@ -220,7 +212,7 @@ class GenController
       @hiliter.highlight @task
 
       @annotations = (@createAnnotation anchor for anchor in @anchors)
-      if AUTO_MODE then @saveAnnotations()
+#      if AUTO_MODE then @saveAnnotations()
 
     $scope.createAnnotation = (anchor) ->
       ts = (new Date()).toString()
@@ -235,7 +227,7 @@ class GenController
           startOffset: anchor.mappings.rangeInfo.startOffset
           endOffset: anchor.mappings.rangeInfo.endOffset
         ]
-        user: "acct:" + @annotationUser + "@" + "0.0.0.0:5000"
+        user: "acct:" + @serverUser + "@" + @serverHost + ":" + @serverPort
         text: @annotationBodyText
         permissions:
           read: []
@@ -244,80 +236,101 @@ class GenController
           delete: []
       }
 
+    $scope.getLoginStatus = ->
+      console.log "Checking login status..."
+      $http.get(LH_PATH + "/login_status").success (result) =>
+        @serverHost = result.host
+        @serverPort = result.port
+        @serverUser = result.user
+        [@persona, @token] = if @serverHost isnt "none"
+          [@serverUser + "/" + @serverHost + ":" + @serverPort, result.token]
+        else
+          [null, null]
+        if @persona? and AUTO_MODE then $scope.urlEdited()
+
+    $scope.logout = ->
+      $http.post(LH_PATH + "/logout").success => @getLoginStatus()
+      if @task? then @hiliter.undo @task
+      delete @annotations
+      delete @anchors
+      delete @paths
+      delete @sourceURL
+        
     $scope.login = (hHost, hPort, userName, passWord) ->
-      url1 = "http://" + hHost + ":" + hPort + "/app/?xdm_e=http%3A%2F%2F" + hHost + "t%3A" + hPort + "%2F&xdm_c=annotator&xdm_p=4"
-
-      xsrf = $.param
-        username: userName
-        password: passWord
-        __formid__: "login"
-
-      console.log xsrf
-      return
+      loginData =
+        host: hHost
+        port: hPort
+        user: userName
+        pass: passWord
         
-      call = $http
-        method: 'POST'
-        url: url1
-        data: xsrf
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'}
+      $http.post(LH_PATH + "/login", loginData).success (result) =>
+        switch result.status
+          when "connection error" then alert "Can not connect to server."
+          when "bad password" then alert "Invalid username or password."
+          when "internal error" then alert "Could not log you in due to an internal error. Sorry."
+          when "success"
+             console.log "Login succeeded."
+             @getLoginStatus()
+          else alert "Could not unterstand the server's answer. Sorry"
 
+    $scope.tryLogin = ->
+      console.log "Logging in to " + @targetServer
+      [host, port] = switch @targetServer
+        when "localhost" then ["localhost", 5000]
+        when "hypotest" then ["hypotest.nolmecolindor.com", 8000]
+        when "dev" then ["dev.hypothes.is", 80]
+        when "test" then ["test.hypothes.is", 80]
+        else [null, null]
+      if host?
+        @login host, port, @loginUser, @loginPass
+      else
+        console.log "Unknown target server " + @targetServer
 
-      call.success (data) ->
-        console.log data
-      call.error (data) ->
-        console.log data  
-
-
+    $scope.annotationSaved = ->
+      @pendingSaveCount -= 1
+      @wait.set "Saving…", "Please wait while saving the annotations! (" + @pendingSaveCount + " more to go.)"
+      if @pendingSaveCount is 0
+        @wait.finished()
+        if @task? then @hiliter.undo @task
+        delete @annotations
         
-#      console.log tokenURL = "http://" + host + "/app/token"
-#      $http.get(tokenURL).success (data) ->
-#        console.log "Got token: " + data
-        
-      return
-      p =
-        username: userName
-        provider: provider
-      data =
-        flash: {}
-        status: "okay"
-        model:
-          persona: p
-          personas: [p]
-          token: token
-          tokenURL: tokenURL
-
     $scope.saveAnnotations = ->
-      console.log "Should save annotatinos to " + @targetServer
+      @wait.set "Saving…", "Please wait while saving the annotations!"
+      console.log "Saving annotations to " + @serverHost
       console.log @annotations
-      token = "fake-token"
-      $http.defaults.headers.post["x-annotator-auth-token"] = token
-      console.log "Default headers: "
-      console.log $http.defaults.headers.common
-      console.log "Post headers: "
-      console.log $http.defaults.headers.post
-#      return
-#"x-xsrf-token"
-      url = "http://0.0.0.0:5000/api/current/annotations"
-      $http.post(url, @annotations[0])
-        .success (data, status, headers, config) ->
-           console.log "Success!"
-        .error (data, status, headers, config) ->
-           console.log "Error!"
-           switch status
-             when 0 then alert "Could not connect to server!"
-             when 401
-               console.log data        
-               alert "Access denied. That means an authentication problem with the server..."
-             else
-               console.log "Unknown error while saving annotation:"
-               console.log data
-               console.log status
-               console.log headers
-               console.log config
+      @pendingSaveCount = @annotations.length
+      $http.defaults.headers.post["x-annotator-auth-token"] = @token
+      url = "http://" + @serverHost + ":" + @serverPort + "/api/current/annotations"
+      for annotation in @annotations
+        $http.post(url, annotation)
+          .success (data, status, headers, config) =>
+            console.log data
+            @annotationSaved()
+          .error (data, status, headers, config) =>
+             console.log "Error!"
+             switch status
+               when 0 then alert "Could not connect to server!"
+               when 401
+                 console.log data        
+                 alert "Access denied. That means an authentication problem with the server..."
+               else
+                 console.log "Unknown error while saving annotation:"
+                 console.log data
+                 console.log status
+                 console.log headers
+                 console.log config
+             @annotationSaved()                
+
+    $scope.getLoginStatus()
 
     if AUTO_MODE
-#      $scope.urlEdited()
-      $scope.login "localhost", 5000, "LoudHoward2", "lemmeshout"
+       $scope.loginUser = "LoudHoward2"
+       $scope.loginPass = "lemmeshout"
+
+
+
+#      $scope.login "localhost", 5000, "LoudHoward2", "lemmeshout"
+#      $scope.login "hypotest", 8000, "LoudHoward2", "lemmeshout", (res) ->
 
 angular.module('loudHoward.controllers', [])
   .controller("GenController", GenController)

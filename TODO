@@ -1,0 +1,20 @@
++ Fix char index problme with hiliting
++ Handle link click-induced reloading (inside iframe, via proxy)
++ Add "select whole words" option
++ Options: content, user, db
+
+- Handle session timeout
+   - false positive (when trying to navigate via dead proxy) and 
+   - false negative (whan can't load app))
+
+
+- Save annotations
+
+
+- Port dom-text-matcher to the new dom-text-mapper interface
+
+- Port dom-text-mapper-demo to the the new set of libraries
+    - different set of files
+    - new iface of dtHiliter
+    - new iface of dtMatcher ?
+    

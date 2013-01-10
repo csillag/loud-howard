@@ -47,7 +47,35 @@
       <div class="navbar-inner">
 	<a class="brand" href="#">Loud Howard</a>
 
-	<form id="source-document-form" class="form-inline navbar-form pull-left" ng-submit="urlEdited()">
+	<form ng-hide="token" id="login-form" class="form-inline navbar-form pull-right" ng-submit="tryLogin()">
+	  <input ng-model="loginUser" placeholder="username" type="text" class="input input-small">
+	  <input ng-model="loginPass" placeholder="password" type="password" class="input input-small">
+	  <label class="radio" ng-show="devMode">
+	    <input type="radio" ng-model="targetServer" value="localhost" />
+	    localhost
+	  </label>
+	  <label class="radio">
+	    <input type="radio" ng-model="targetServer" value="hypotest" />
+	    hypotest.nolme
+	  </label>
+	  <label class="radio">
+	    <input type="radio" ng-model="targetServer" value="dev" />
+	    dev.h
+	  </label>
+	  <label class="radio">
+	    <input type="radio" ng-model="targetServer" value="tests" />
+	    test.h
+	  </label>
+	  <button type="submit" class="btn btn-primary">Sign in</button>
+        </form>
+
+	<form ng-show="token" id="logout-form" class="form-inline navbar-form pull-right" ng-submit="logout()">
+	  <label ng-show="false" >User: <strong>{{persona}}</strong></label>
+	  <button type="submit" class="btn">Sign out</button>
+	</form>
+	
+
+	<form ng-show="token" id="source-document-form" class="form-inline navbar-form pull-left" ng-submit="urlEdited()">
 	  <input type="url" ng-model="wantedURL" class="input-xxlarge" placeholder="http://www.something.com/interesting/article"/>
 	  <button title="Go fetch" type="submit" class="btn btn-small btn-primary">
 	    <i class="icon-circle-arrow-right"></i>
@@ -99,20 +127,8 @@
 	<form id="annotation-save-form" class="form-inline navbar-form pull-left" ng-show="annotations" ng-submit="saveAnnotations()">
 	  <button title="Save annotations" type="submit" class="btn btn-danger">
 	    <i class="icon-book"></i>
-	    Save
+	    Save these
 	  </button>	    
-	  <label class="radio" ng-show="devMode">
-	    <input type="radio" ng-model="targetServer" value="localhost" />
-	    localhost
-	  </label>
-	  <label class="radio">
-	    <input type="radio" ng-model="targetServer" value="dev" />
-	    dev.h
-	  </label>
-	  <label class="radio">
-	    <input type="radio" ng-model="targetServer" value="tests" />
-	    test.h
-	  </label>
 	</form>
 	
       </div>
