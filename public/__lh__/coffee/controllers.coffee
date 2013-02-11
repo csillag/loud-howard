@@ -39,7 +39,7 @@ class GenController
       @selectWholeWords = true
       @annotationBodyText = "AUTO-GENERATED TEST ANNOTATION"
       @devMode = document.location.hostname is "localhost"
-      @targetServer = "hypotest"
+      @targetServer = "h3"
       if @devMode and AUTO_URL then @wantedURL = "http://en.wikipedia.org/wiki/Criteria_of_truth"
 
     $scope.init()
@@ -334,7 +334,7 @@ class GenController
       console.log "Logging in to " + @targetServer
       [host, port] = switch @targetServer
         when "localhost" then ["localhost", 5000]
-        when "hypotest" then ["hypotest.nolmecolindor.com", 8000]
+        when "h3" then ["h3.nolmecolindor.com", 80]
         when "dev" then ["dev.hypothes.is", 80]
         when "test" then ["test.hypothes.is", 80]
         else [null, null]
