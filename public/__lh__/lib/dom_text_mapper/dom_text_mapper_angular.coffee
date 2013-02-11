@@ -1,2 +1,2 @@
-angular.module 'domTextMapper', [], ($provide) ->
-  $provide.factory "domTextMapper", -> getInstance: -> new DomTextMapper
+angular.module('domTextMapper', [])
+  .factory "domTextMapper", -> getInstance: -> new DomTextMapper

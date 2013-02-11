@@ -11,7 +11,7 @@ class window.DomTextHiliter
     if indices?
       if typeof indices is 'number' then indices = [indices]
     else
-       indices = [0 ... len]
+      indices = [0 ... len]
     sel = window.getSelection()
     sel.removeAllRanges()
 #    (sel.addRange results.matches[index].range) for index in indices when 0 <= index < len
@@ -19,6 +19,11 @@ class window.DomTextHiliter
       do (index) =>
         match = results.matches[index]
         sel.addRange match.range
+
+  highlightSearchResults: (sr, hiliteTemplate = null, indices = null) ->
+    task = ranges: sr.matches
+    @highlight(task, hiliteTemplate, indices)
+    task
 
   # Parameters:
   #   "hiliteTemplate" is a DOM node to use for wrapper for higlighting.
@@ -35,13 +40,19 @@ class window.DomTextHiliter
     hiliteTemplate ?= @standardHilite
 
     len = task.ranges.length
+#    console.log "Got " + len + " ranges."
     if indices?
       if typeof indices is 'number' then indices = [indices]
     else
+#      console.log "Got no indices to start with"
       if len
+#        console.log "Creating full indices"
         indices = [0 ... len]
       else
-         return
+#        console.log "Nothing to do"
+        return
+#    console.log "Indices are: "
+#    console.log indices
 
     # Prepare data structures for undo   
     toInsert = []
@@ -57,7 +68,7 @@ class window.DomTextHiliter
 #          console.log "Highlighting match #" + index
           for match in task.ranges[index].nodes
             do (match) =>
-              path = match.element.path
+              path = match.element.pathInfo.path
               hilitePaths[path] ?= []
               hilitePaths[path].push match
  
@@ -65,11 +76,23 @@ class window.DomTextHiliter
     for path, matches of hilitePaths
       do (path, matches) =>
 #        console.log "Doing new node."
-        node = matches[0].element.node
+        node = matches[0].element.pathInfo.node
+        unless node?
+          console.log "Node missing. Looking it up..."
+          node = @domMapper.lookUpNode matches[0].element.pathInfo.path
+#          console.log "Found. "
+#          console.log node
+#        else
+#          console.log "Node is:"
+#          console.log node
+#        console.log "Matches: "
+#        console.log matches
         # Calculate a normalized set of ranges 
         ranges = @uniteRanges ({start: match.startCorrected, end: match.endCorrected, yields: match.yields } for match in matches)
+#        console.log "Ranges: "
+#        console.log ranges
         clone = node.cloneNode()
-        match.element.node = clone for match in matches
+        match.element.pathInfo.node = clone for match in matches
 
         len = node.data.length
         full = ranges.length is 1 and ranges[0].start is 0 and ranges[0].end is len
@@ -80,7 +103,7 @@ class window.DomTextHiliter
             node: clone
             before: hl
           toRemove.push hl
- #         console.log "Done full cut."
+#          console.log "Done full cut."
         else
             # Unfortunately, we need to mess around the insides of this element
             index = 0
@@ -89,7 +112,7 @@ class window.DomTextHiliter
             for range in ranges
               do (range) =>
                 if range.start is 0
-                  # This is the first range, and it starts at the start of the node      
+                  # This is the first range, and it starts at the start of the node
                   nextPart = nextPart.splitText range.end
                   firstPart = nextPart.previousSibling
 #                  if firstPart.data isnt range.yields
@@ -107,7 +130,7 @@ class window.DomTextHiliter
                   lastPart = nextPart.splitText range.start - index
                   nextPart = null
                   remainingPart = lastPart.previousSibling
-#                  if lastPart.data isnt range.yields
+ #                 if lastPart.data isnt range.yields
 #                    console.log "End cut. Wanted: '" + range.yields + "'; got: '" + lastPart.data + "'."
 #                  else
 #                    console.log "Done end cut."
@@ -119,8 +142,10 @@ class window.DomTextHiliter
                   toRemove.push hl
                 else
                   # this range is is at the middle of the node
+#                  console.log "Gonna split @ " + range.start + "-" + index + " = " + (range.start - index) + " (len is: " + nextPart.data.length + ")"
                   middlePart = nextPart.splitText range.start - index
                   beforePart = middlePart.previousSibling
+#                  console.log "Gonna split @ " + range.end + "-" + range.start + "=" + (range.end - range.start) + " (len is: " + middlePart.data.length + ")"
                   nextPart = middlePart.splitText range.end - range.start
 #                  if middlePart.data isnt range.yields
 #                    console.log "Middle cut. Wanted: '" + range.yields + "'; got: '" + middlePart.data + "'."
@@ -140,24 +165,42 @@ class window.DomTextHiliter
       insert: toInsert
       remove: toRemove
 
+    @allActive.undo.insert.push toInsert...
+    @allActive.undo.remove.push toRemove...
+
+    null
+
   # Call this to undo a highlighting task
   #
   # It's your responsibility to only call this if a highlight is at place.
   # (Altought calling it more than once will do no harm.)
   # Pass in the task that was used with the highlighting.
   undo: (task) ->
-    unless task.undo? then return
+    unless task?.undo?
+#      console.log "Nothing to undo"
+      return
+#    console.log "Undo hilite: " + task.undo.insert.length + " insertions, " + task.undo.remove.length + " deletions."
     insert.before.parentNode.insertBefore insert.node, insert.before for insert in task.undo.insert
+    task.undo.insert = []
     remove.parentNode.removeChild remove for remove in task.undo.remove
-    task.undo = null
+    task.undo.remove = []
+
+  clean: ->
+    console.log "Hilite cleanup"
+    @undo @allActive
+    console.log "Done"
   
         
   # ===== Private methods (never call from outside the module) =======
 
   constructor: (domTextMapper) ->
+    @domMapper = domTextMapper    
     hl = document.createElement "span"
     hl.setAttribute "style", "background-color: yellow; color: black; border-radius: 3px; box-shadow: 0 0 2px black;"
     @standardHilite = hl
+    @allActive = undo: 
+      insert: []
+      remove: []
 
   hilite: (node, template) ->
     parent = node.parentNode
@@ -185,10 +228,14 @@ class window.DomTextHiliter
 
   uniteRanges: (ranges) ->
     united = []
-    lastRange = null
+    delete lastRange
+#    console.log "Uniting ranges: "
+#    console.log ranges
     for range in ranges.sort @compareRanges
-      do (range) =>
+#        console.log "Doing range: "
+#        console.log range
         if lastRange? and lastRange.end >= range.start
+#          console.log "Can unite..."
           # there was a previous range, and we can continue it
           if range.end > lastRange.end
 #            console.log "Old yields: '" + lastRange.yields + "'."
@@ -199,10 +246,13 @@ class window.DomTextHiliter
             lastRange.end = range.end
 #            console.log "Should have appended the yield value, too: '" + lastRange.yields + "'."
         else
+#          console.log "New unit. (Last ended @ " + lastRange?.end + "; new start @ " + range.start + ")"
           # no previous range, or it's too far off
           united.push lastRange =
             start: range.start
             end: range.end
             yields: range.yields
+#    console.log "As united:"
+#    console.log united
     united
 

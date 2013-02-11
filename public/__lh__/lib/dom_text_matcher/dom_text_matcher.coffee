@@ -2,6 +2,12 @@ class window.DomTextMatcher
 
   # ===== Public methods =======
 
+  # Switch the library into "serializable-only" mode.
+  # If set to true, all public API calls will be restricted to return
+  # strictly serializable data structures.
+  # (References to DOM objects will be omitted.)
+  restrictToSerializable: (value = true) -> @mapper.restrictToSerializable value
+
   # Consider only the sub-tree beginning with the given node.
   # 
   # This will be the root node to use for all operations.
@@ -23,19 +29,37 @@ class window.DomTextMatcher
   # a different root earlier, and now you want to restore the default setting.)
   setRealRoot: -> @mapper.setRealRoot()
 
+  # Notify the library that the document has changed.
+  # This means that subsequent calls can not safely re-use previously cached
+  # data structures, so some calculations will be necessary again.
+  #
+  # The usage of this feature is not mandatorry; if not receiving change notifications,
+  # the library will just assume that the document can change anythime, and therefore
+  # will not assume any stability.
+  documentChanged: -> @mapper.documentChanged()
+
   # The available paths which can be searched
-  # 
-  # An array is returned, with each entry containing a "path" and a "length" field.
-  # The value of the "path" field is the valid path value, "length" contains information
-  # about the length of content belonging to the given path.
-  getAllPaths: -> @mapper.getAllPaths()
+  #
+  # An map is returned, where the keys are the paths, and the values are objects with the following fields:
+  #   path: the valid path value
+  #   node: reference to the DOM node
+  #   content: the text content of the node, as rendered by the browser
+  #   length: the length of the next content
+  getAllPaths: ->
+    t0 = @timestamp()
+    paths = @mapper.getAllPaths()
+    t1 = @timestamp()
+    return time: t1 - t0, paths: paths
+
+  # Return the default path
+  getDefaultPath: -> @mapper.getDefaultPath()
 
   # Prepare for searching the specified path
   # 
   # Returns the time (in ms) it took the scan the specified path
-  prepareSearch: (path, rescan = false) ->
+  prepareSearch: (path) ->
     t0 = @timestamp()    
-    @mapper.scan path, rescan
+    @mapper.scan path
     t1 = @timestamp()
     t1 - t0
 
@@ -54,14 +78,12 @@ class window.DomTextMatcher
   #    It's not necessary to submit path, if the search was prepared beforehand,
   #    with the prepareSearch() method
   # 
-  #  rescan: should the DOM be re-scanned, even if we already have a mapping for it?
-  # 
   # For the details about the returned data structure, see the documentation of the search() method.
-  searchExact: (pattern, distinct = true, caseSensitive = false, path = null, rescan = false) ->
+  searchExact: (pattern, distinct = true, caseSensitive = false, path = null) ->
     if not @pm then @pm = new window.DTM_ExactMatcher
     @pm.setDistinct(distinct)
     @pm.setCaseSensitive(caseSensitive)
-    @search(@pm, pattern, null, path, rescan)
+    @search @pm, pattern, null, path
 
   # Search for text using regular expressions
   #
@@ -76,13 +98,11 @@ class window.DomTextMatcher
   #    It's not necessary to submit path, if the search was prepared beforehand,
   #    with the prepareSearch() method
   # 
-  #  rescan: should the DOM be re-scanned, even if we already have a mapping for it?
-  # 
   # For the details about the returned data structure, see the documentation of the search() method.
-  searchRegex: (pattern, caseSensitive = false, path = null, rescan = false) ->
+  searchRegex: (pattern, caseSensitive = false, path = null) ->
     if not @rm then @rm = new window.DTM_RegexMatcher
     @rm.setCaseSensitive(caseSensitive)
-    @search(@rm, pattern, null, path, rescan)
+    @search @rm, pattern, null, path
 
   # Search for text using fuzzy text matching
   #
@@ -104,15 +124,13 @@ class window.DomTextMatcher
   #    It's not necessary to submit path, if the search was prepared beforehand,
   #    with the prepareSearch() method
   # 
-  #  rescan: should the DOM be re-scanned, even if we already have a mapping for it?
-  # 
   # For the details about the returned data structure, see the documentation of the search() method.
-  searchFuzzy: (pattern, pos, caseSensitive = false, matchDistance = 1000, matchThreshold = 0.5, path = null, rescan = false) ->
+  searchFuzzy: (pattern, pos, caseSensitive = false, matchDistance = 1000, matchThreshold = 0.5, path = null) ->
     if not @dmp? then @dmp = new window.DTM_DMPMatcher
     @dmp.setMatchDistance matchDistance
     @dmp.setMatchThreshold matchThreshold
     @dmp.setCaseSensitive caseSensitive
-    @search(@dmp, pattern, pos, path, rescan)
+    @search @dmp, pattern, pos, path
 
   # ===== Private methods (never call from outside the module) =======
 
@@ -136,7 +154,7 @@ class window.DomTextMatcher
   # Nodes is the list of matching nodes, with details about the matches.
   # 
   # If no match is found, null is returned.  # 
-  search: (matcher, pattern, pos, path = null, rescan = false) ->
+  search: (matcher, pattern, pos, path = null) ->
     # Prepare and check the pattern 
     unless pattern? then throw new Error "Can't search for null pattern!"
     pattern = pattern.trim()
@@ -144,7 +162,7 @@ class window.DomTextMatcher
 
     # Do some preparation, if required
     t0 = @timestamp()# 
-    if path? then @prepareSearch(path, rescan)
+    if path? then @prepareSearch path
     t1 = @timestamp()
 
     # Check preparations    
@@ -162,7 +180,7 @@ class window.DomTextMatcher
     matches = []
     for match in textMatches
       do (match) =>
-        matches.push $.extend {}, match, @analyzeMatch(pattern, match), @mapper.getMappingsFor(match.start, match.end)
+        matches.push $.extend {}, match, @analyzeMatch(pattern, match), @mapper.getMappingsForRange(match.start, match.end)
     t3 = @timestamp()
     return {
       matches: matches

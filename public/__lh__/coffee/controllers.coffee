@@ -2,20 +2,23 @@
 
 class GenController
 
-  AUTO_MODE = false
+  AUTO_LOGIN = true
+  AUTO_URL = true
+  AUTO_LOAD_ON_LOGIN = true
+  AUTO_ANNOTATE = false
+  AUTO_SAVE = false
 
   BORDER_CHARS = " ,.!?+-/*()$%&;:"
   LH_PREFIX = "__lh__"
   LH_PATH = "/" + LH_PREFIX
-  PATH_PREFIX_LENGTH = "/html/body".length
-  PATH_SUFFIX = "/text()"
+  PATH_PREFIX_LENGTH = "/html[1]/body[1]".length
   SAVE_WAIT_SECS = 1
-        
+  MAX_QUOTE_LENGTH = 64
+       
   this.$inject = ['$scope', '$http', '$timeout', '$document', 'domTextMapper', 'domTextHiliter', 'waitIndicator']
   constructor: ($scope, $http, $timeout, $document, domTextMapper, domTextHiliter, waitIndicator) ->
 
-    $http.get(LH_PATH + "/forget_proxy").success (data) =>
-      console.log "Reseted proxy"
+    $http.get(LH_PATH + "/forget_proxy")#.success (data) => console.log "Reseted proxy"
 
     window.wtfscope = $scope
         
@@ -27,7 +30,7 @@ class GenController
 
       @$watch 'selectedPath', => @prepareSelectedPath()
       @wait = waitIndicator
-      @hiliter = domTextHiliter.getInstance()
+      @hiliter = domTextHiliter
       @candidateMinLength = 500
       @numAnnotations = 10
       @distribution = "uniform"
@@ -36,11 +39,18 @@ class GenController
       @selectWholeWords = true
       @annotationBodyText = "AUTO-GENERATED TEST ANNOTATION"
       @devMode = document.location.hostname is "localhost"
-      AUTO_MODE = @devMode
       @targetServer = "hypotest"
-      if AUTO_MODE then @wantedURL = "http://en.wikipedia.org/wiki/Criteria_of_truth"
+      if @devMode and AUTO_URL then @wantedURL = "http://en.wikipedia.org/wiki/Criteria_of_truth"
 
     $scope.init()
+
+    # Get a shortened version of any text
+    $scope.getExcerpt = (text, length = MAX_QUOTE_LENGTH) ->
+      exLen = length / 2
+      if text.length <= length
+        text
+      else
+        (text.substr 0, exLen) + " [...] " + (text.substr text.length-exLen)
 
     $scope.splitURL = (url) ->
       a = document.createElement 'a'
@@ -68,7 +78,7 @@ class GenController
         if data.status is "success"
           @shouldLoad = path
           @sourceURL = LH_PATH + "/loading" # path
-          console.log "Proxy configured; should load " + @sourceURL
+#          console.log "Proxy configured; should load " + @sourceURL
         else
           alert "Failed to configure proxy: " + data.message        
 
@@ -107,7 +117,7 @@ class GenController
     window.loudHowardUrlLoaded = =>
       $scope.$apply =>
         if $scope.shouldLoad?
-          console.log "Pre-loading ready. Now starting real load..."
+#          console.log "Pre-loading ready. Now starting real load..."
           $scope.sourceURL = $scope.shouldLoad
           delete $scope.shouldLoad
           return
@@ -124,11 +134,11 @@ class GenController
 
         if $scope.loadedOK()
           $scope.wait.set "Parsing…", "Please wait while the document is being analyzed!"
+          $scope.domMapper.setRootIframe "loud-howard-article-box"
+          $scope.domMapper.documentChanged()        
           delete $scope.paths
           delete $scope.selectedPath
           delete $scope.selectedPathData
-          $scope.domMapper.setRootIframe "loud-howard-article-box"
-          $scope.domMapper.scan null, true
           $scope.checkPaths()
         else
           $scope.wait.finished()
@@ -138,31 +148,34 @@ class GenController
       # wait for the browser to render the DOM for the new HTML
       $timeout =>
         @paths ?= @domMapper.getAllPaths()
+        @domMapper.scan()
         @filterPathCandidates()
-
         if @selectedPath in @offeredPaths
           @prepareSelectedPath()
         else
-          @selectedPath = @offeredPaths[0]
+          @selectedPath = @domMapper.getDefaultPath() 
 
     $scope.filterPathCandidates = ->
       @offeredPaths = for path, data of @paths when data.length >= @candidateMinLength then path
       if @offeredPaths.length is 0
         @candidateMinLength = Math.max (data.length for path, data of @paths)...
         @filterPathCandidates()
-  
+
+    $scope.getSummary = (path) ->
+      i = @paths[path]  
+      exc = @getExcerpt i.content
+      sum = path + " ('" + exc + "'; " + i.length + " chars)"
+        
     $scope.prepareSelectedPath = ->
-      if @task then @hiliter.undo @task  
       unless @selectedPath? then return
-      @selectedPathData = @paths[@selectedPath]
-      @selectedPathExcerpt = @domMapper.getExcerpt @selectedPathData.content, 400
-      if @selectedPath isnt "/HTML/BODY" then @domMapper.selectPath @selectedPath
-      @selectedPathData.node.scrollIntoViewIfNeeded()
       console.log "Chosen " + @selectedPath + "."
-      @wait.finished()
-      if @task? then @hiliter.undo @task
+      @hiliter.undo @task
       delete @annotations
-      if AUTO_MODE then @generateAnnotations()
+      delete @anchors        
+      @selectedPathData = @paths[@selectedPath]
+      if @selectedPath isnt "/HTML/BODY" then @domMapper.selectPath @selectedPath, true
+      @wait.finished()
+      if @devMode and AUTO_ANNOTATE then @generateAnnotations()
 
     $scope.getRandomInt = (min, max) -> min + Math.floor (Math.random() * (max - min + 1))
 
@@ -189,10 +202,12 @@ class GenController
       results
 
      $scope.generateAnnotations = ->
-      if @task? then @hiliter.undo @task
-      cont = @selectedPathData.mapping.content
+      @hiliter.undo @task
+      cont = @selectedPathData.content
       maxLen = @selectedPathData.length
-      offset = @selectedPathData.mapping.start
+      range = @domMapper.getRangeForPath @selectedPath
+      offset = range.start
+
       @anchors = (len:l, start:@getRandomInt 0, maxLen - l for l in @getLengths())
 
 
@@ -205,42 +220,70 @@ class GenController
             anchor.end += 1
           anchor.len = anchor.end - anchor.start
         anchor.text = cont.substr anchor.start, anchor.len
-#        console.log "Anchor text: '" + anchor.text + "'"
+        console.log "Anchor text: '" + anchor.text + "'"
         anchor.startGlobal = anchor.start + offset
         anchor.endGlobal = anchor.end + offset
-        anchor.mappings = @domMapper.getMappingsFor anchor.startGlobal, anchor.endGlobal
+        anchor.mappings = @domMapper.getMappingsForRange anchor.startGlobal, anchor.endGlobal
+        anchor.magicRange = @getMagicRange anchor.mappings
+#        console.log "Now should restore DOM & data cache integrity..."
+        @domMapper.documentChanged()
+        @paths = @domMapper.getAllPaths()
+        @domMapper.scan()
+#        console.log "Data updated."        
+#        console.log anchor.mappings
 
+      console.log "Now re-calculating native mapping info for updated DOM structure..."
+      for anchor in @anchors
+        anchor.mappings = @domMapper.getMappingsForRange anchor.startGlobal, anchor.endGlobal
+      console.log "Done."        
+        
       console.log "Generated anchors."
+      console.log @anchors
 
       @task = ranges: (nodes: anchor.mappings.nodes for anchor in @anchors)
       @hiliter.highlight @task
 
       @annotations = (@createAnnotation anchor for anchor in @anchors)
       console.log "Generated annotations."
+      console.log @annotations
 
-#      if AUTO_MODE then @saveAnnotations()
+      if @devMode and AUTO_SAVE then @saveAnnotations()
 
-    $scope.transformPath = (path) ->
-      path = path.substr PATH_PREFIX_LENGTH
-      if path.length >= PATH_SUFFIX.length
-        pathEnd = path.substr path.length - PATH_SUFFIX.length
-        if pathEnd is PATH_SUFFIX
-          path = path.substr 0, path.length - PATH_SUFFIX.length
-      path
+    $scope.getMagicRange = (mapping) ->
+#      console.log "Creating magic range for this mapping: "
+#      console.log mapping
+      range = mapping.range
+#      console.log if range.startContainer is range.endContainer then "Simple-element range" else "Multi-element range"
+#      console.log range.startOffset + " - " + range.endOffset
+      browserRange = new magic.Range.BrowserRange range
+      magicRange = browserRange.serialize()
+#      console.log "Magic is: "
+#      console.log magicRange
+      magicRange
+
+    $scope.transformForStorage = (r) ->
+      result =
+        end: r.end.substr PATH_PREFIX_LENGTH
+        start: r.start.substr PATH_PREFIX_LENGTH
+        startOffset: r.startOffset
+        endOffset: r.endOffset
 
     $scope.createAnnotation = (anchor) ->
       ts = (new Date()).toString()
       {
         updated: ts
         created: ts
-        qoute: anchor.text
+        quote: anchor.text
         uri: @wantedURL
         ranges: [
-          start: @transformPath anchor.mappings.rangeInfo.startPath
-          end: @transformPath anchor.mappings.rangeInfo.endPath
-          startOffset: anchor.mappings.rangeInfo.startOffset
-          endOffset: anchor.mappings.rangeInfo.endOffset
+          @transformForStorage anchor.magicRange
         ]
+#        ranges: [
+#          start: @transformPath anchor.mappings.rangeInfo.startPath
+#          end: @transformPath anchor.mappings.rangeInfo.endPath
+#          startOffset: anchor.mappings.rangeInfo.startOffset
+#          endOffset: anchor.mappings.rangeInfo.endOffset
+#        ]
         user: "acct:" + @serverUser + "@" + @serverHost + ":" + @serverPort
         text: @annotationBodyText
         permissions:
@@ -260,11 +303,11 @@ class GenController
           [@serverUser + "/" + @serverHost + ":" + @serverPort, result.token]
         else
           [null, null]
-        if @persona? and AUTO_MODE then $scope.urlEdited()
+        if @persona? and @devMode and AUTO_LOAD_ON_LOGIN then $scope.urlEdited()
 
     $scope.logout = ->
       $http.post(LH_PATH + "/logout").success => @getLoginStatus()
-      if @task? then @hiliter.undo @task
+      @hiliter.undo @task
       delete @annotations
       delete @anchors
       delete @paths
@@ -305,8 +348,9 @@ class GenController
       @wait.set "Saving…", "Please wait while saving the annotations! (" + @pendingSaveCount + " more to go.)"
       if @pendingSaveCount is 0
         @wait.finished()
-        if @task? then @hiliter.undo @task
+        @hiliter.undo @task
         delete @annotations
+        delete @anchors
 
     $scope.saveAnnotation = (annotation) ->
       console.log "Sending save request..."
@@ -333,17 +377,17 @@ class GenController
     $scope.saveAnnotations = ->
       @wait.set "Saving…", "Please wait while saving the annotations!"
       console.log "Saving annotations to " + @serverHost
-      console.log @annotations
+#      console.log @annotations
       @pendingSaveCount = @annotations.length
       $http.defaults.headers.post["x-annotator-auth-token"] = @token
-      t = 0
-      for annotation in @annotations
-        $timeout (=> @saveAnnotation annotation), t*1000
-        t += SAVE_WAIT_SECS
+
+      for i in [0 ... @annotations.length]
+        do (i) ->
+          $timeout (=> $scope.saveAnnotation $scope.annotations[i]), i * SAVE_WAIT_SECS * 1000
 
     $scope.getLoginStatus()
 
-    if AUTO_MODE
+    if @devMode and AUTO_LOGIN
        $scope.loginUser = "LoudHoward2"
        $scope.loginPass = "lemmeshout"
 
