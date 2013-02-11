@@ -3,3 +3,4 @@ angular.module('domTextMatcher', ['domTextMapper'])
     getInstance: -> new DomTextMatcher domTextMapper.getInstance()
   ])
   .factory "domTextHiliter", -> new DomTextHiliter
+

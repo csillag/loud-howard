@@ -15,7 +15,7 @@ class GenController
   SAVE_WAIT_SECS = 1
   MAX_QUOTE_LENGTH = 64
        
-  this.$inject = ['$scope', '$http', '$timeout', '$document', 'domTextMapper', 'domTextHiliter', 'waitIndicator']
+  GenController.$inject = ['$scope', '$http', '$timeout', '$document', 'domTextMapper', 'domTextHiliter', 'waitIndicator']
   constructor: ($scope, $http, $timeout, $document, domTextMapper, domTextHiliter, waitIndicator) ->
 
     $http.get(LH_PATH + "/forget_proxy")#.success (data) => console.log "Reseted proxy"
@@ -41,6 +41,7 @@ class GenController
       @devMode = document.location.hostname is "localhost"
       @targetServer = "h3"
       if @devMode and AUTO_URL then @wantedURL = "http://en.wikipedia.org/wiki/Criteria_of_truth"
+      console.log "Dev mode is " + @devMode
 
     $scope.init()
 
@@ -52,7 +53,7 @@ class GenController
       else
         (text.substr 0, exLen) + " [...] " + (text.substr text.length-exLen)
 
-    $scope.splitURL = (url) ->
+    $scope.splitURL = ->
       a = document.createElement 'a'
       a.href = @wantedURL
 #      console.log a
@@ -73,13 +74,16 @@ class GenController
       [host, port, path + search + hash]
 
     $scope.loadWithProxy = ->
-      [host, port, path] = @splitURL @wantedURL
+      [host, port, path] = @splitURL()
       $http.get(LH_PATH + "/setup_proxy/" + host + "/" + port).success (data) =>
         if data.status is "success"
           @shouldLoad = path
           @sourceURL = LH_PATH + "/loading" # path
 #          console.log "Proxy configured; should load " + @sourceURL
+#          console.log "Setting tryingToLoad.."
+          @tryingToLoad = true
         else
+          console.log data
           alert "Failed to configure proxy: " + data.message        
 
     $scope.urlEdited = ->
@@ -92,8 +96,8 @@ class GenController
       delete @selectedPath
    
       console.log "Wanted URL is: " + @wantedURL
-
       @wait.set "Loading…", "Please wait while the specified document is loaded!"
+
 
       $timeout => @loadWithProxy()
 
@@ -110,15 +114,20 @@ class GenController
     $scope.fixSize = =>
       top = $(".navbar").outerHeight() + 5
       $("#article-container").css("top", top + "px")
-      $timeout (=> $scope.fixSize()), 1000
+      $timeout (-> $scope.fixSize()), 1000
 
     $scope.fixSize()
 
     window.loudHowardUrlLoaded = =>
       $scope.$apply =>
+#        console.log "Are we trying to load? " + $scope.tryingToLoad
+        unless $scope.tryingToLoad? then return
+        delete $scope.tryingToLoad
         if $scope.shouldLoad?
 #          console.log "Pre-loading ready. Now starting real load..."
           $scope.sourceURL = $scope.shouldLoad
+#          console.log "Setting tryingToLoad.."
+          $scope.tryingToLoad = true        
           delete $scope.shouldLoad
           return
         
@@ -126,8 +135,9 @@ class GenController
         $http.get(LH_PATH + "/get_redirection").success (data) =>
           if data isnt ""
             console.log "Was server-redirected to " + data
+            @tryingToLoad = true
             $scope.wantedURL = data
-          [host, port, wantedPath] = $scope.splitURL @wantedURL
+          [host, port, wantedPath] = $scope.splitURL()
           actualPath = $scope.getLoadedPath()
           if actualPath isnt wantedPath
             $scope.wantedURL = "http://" + host + (if port isnt "80" then ":" + port else "") + actualPath
@@ -194,60 +204,65 @@ class GenController
         when "boltzmann" then @makeBoltzmannDistribution()
         else alert "Unknown distribution requested: '" + @distribution + "'."
         
-    $scope.getLengths = (numLength) ->
+    $scope.getLengths = ->
       results = []
       for k, v of @getLengthDistribution()
         for i in [1..v]
           results.push parseInt k
       results
 
-     $scope.generateAnnotations = ->
+    $scope.generateAnnotations = ->
       @hiliter.undo @task
+
       cont = @selectedPathData.content
       maxLen = @selectedPathData.length
       range = @domMapper.getRangeForPath @selectedPath
       offset = range.start
 
+      @wait.set "Generating…", "Please wait while generating the annotations!"
       @anchors = (len:l, start:@getRandomInt 0, maxLen - l for l in @getLengths())
-
-
-      for anchor in @anchors
-        anchor.end = anchor.start + anchor.len        
-        if @selectWholeWords
-          while anchor.start and (BORDER_CHARS.indexOf cont[anchor.start - 1]) is -1
-            anchor.start -= 1
-          while anchor.end < maxLen and (BORDER_CHARS.indexOf cont[anchor.end]) is -1
-            anchor.end += 1
-          anchor.len = anchor.end - anchor.start
-        anchor.text = cont.substr anchor.start, anchor.len
-        console.log "Anchor text: '" + anchor.text + "'"
-        anchor.startGlobal = anchor.start + offset
-        anchor.endGlobal = anchor.end + offset
-        anchor.mappings = @domMapper.getMappingsForRange anchor.startGlobal, anchor.endGlobal
-        anchor.magicRange = @getMagicRange anchor.mappings
+      console.log "Set wait:"
+      $timeout (=>
+        console.log "Start generating"
+        for anchor in @anchors
+          anchor.end = anchor.start + anchor.len        
+          if @selectWholeWords
+            while anchor.start and (BORDER_CHARS.indexOf cont[anchor.start - 1]) is -1
+              anchor.start -= 1
+            while anchor.end < maxLen and (BORDER_CHARS.indexOf cont[anchor.end]) is -1
+              anchor.end += 1
+            anchor.len = anchor.end - anchor.start
+          anchor.text = cont.substr anchor.start, anchor.len
+          console.log "Anchor text: '" + anchor.text + "'"
+          anchor.startGlobal = anchor.start + offset
+          anchor.endGlobal = anchor.end + offset
+          anchor.mappings = @domMapper.getMappingsForRange anchor.startGlobal, anchor.endGlobal
+          anchor.magicRange = @getMagicRange anchor.mappings
 #        console.log "Now should restore DOM & data cache integrity..."
-        @domMapper.documentChanged()
-        @paths = @domMapper.getAllPaths()
-        @domMapper.scan()
+          @domMapper.documentChanged()
+          @paths = @domMapper.getAllPaths()
+          @domMapper.scan()
 #        console.log "Data updated."        
 #        console.log anchor.mappings
-
-      console.log "Now re-calculating native mapping info for updated DOM structure..."
-      for anchor in @anchors
-        anchor.mappings = @domMapper.getMappingsForRange anchor.startGlobal, anchor.endGlobal
-      console.log "Done."        
+        console.log "Now re-calculating native mapping info for updated DOM structure..."
+        for anchor in @anchors
+          anchor.mappings = @domMapper.getMappingsForRange anchor.startGlobal, anchor.endGlobal
+        console.log "Done."        
         
-      console.log "Generated anchors."
-      console.log @anchors
+        console.log "Generated anchors."
+#      console.log @anchors
 
-      @task = ranges: (nodes: anchor.mappings.nodes for anchor in @anchors)
-      @hiliter.highlight @task
+        @annotations = (@createAnnotation anchor for anchor in @anchors)
+        console.log "Generated annotations."
+#      console.log @annotations
 
-      @annotations = (@createAnnotation anchor for anchor in @anchors)
-      console.log "Generated annotations."
-      console.log @annotations
+        @wait.finished() 
 
-      if @devMode and AUTO_SAVE then @saveAnnotations()
+        @task = ranges: (nodes: anchor.mappings.nodes for anchor in @anchors)
+        @hiliter.highlight @task
+
+        if @devMode and AUTO_SAVE then @saveAnnotations()
+      ), 1000
 
     $scope.getMagicRange = (mapping) ->
 #      console.log "Creating magic range for this mapping: "
@@ -303,7 +318,8 @@ class GenController
           [@serverUser + "/" + @serverHost + ":" + @serverPort, result.token]
         else
           [null, null]
-        if @persona? and @devMode and AUTO_LOAD_ON_LOGIN then $scope.urlEdited()
+        if @persona? and @devMode and AUTO_LOAD_ON_LOGIN
+          $scope.urlEdited()
 
     $scope.logout = ->
       $http.post(LH_PATH + "/logout").success => @getLoginStatus()
@@ -356,8 +372,10 @@ class GenController
       console.log "Sending save request..."
       url = "http://" + @serverHost + ":" + @serverPort + "/api/current/annotations"
       $http.post(url, annotation)
-        .success (data, status, headers, config) =>
-          console.log data
+#        .success (data, status, headers, config) =>
+        .success (data) =>
+          console.log "OK."
+#          console.log data
           @annotationSaved()
         .error (data, status, headers, config) =>
            console.log "Error!"
@@ -391,10 +409,9 @@ class GenController
        $scope.loginUser = "LoudHoward2"
        $scope.loginPass = "lemmeshout"
 
-
-
 #      $scope.login "localhost", 5000, "LoudHoward2", "lemmeshout"
 #      $scope.login "hypotest", 8000, "LoudHoward2", "lemmeshout", (res) ->
 
 angular.module('loudHoward.controllers', [])
   .controller("GenController", GenController)
+

@@ -9,17 +9,28 @@
 <body ng-controller="GenController" ng-cloak>
   <script src="lib/jquery/jquery-1.8.3.min.js"></script>
   <script src="lib/bootstrap/js/bootstrap.min.js"></script>
+  <script src="lib/angular/angular.js"></script>
+  <!-- In production use:
   <script src="http://ajax.googleapis.com/ajax/libs/angularjs/1.0.3/angular.min.js"></script>
-  <script src="lib/dom_text_mapper/dom_text_mapper.min.js"></script>
-  <script src="lib/dom_text_mapper/dom_text_mapper_angular.min.js"></script>
-  <script src="lib/dom_text_matcher/dom_text_hiliter.min.js"></script>
-  <script src="lib/dom_text_matcher/dom_text_matcher_angular.min.js"></script>
-  <script src="lib/magic_range/magic.min.js"></script>
-  <script src="coffee/app.min.js"></script>
+  -->
+
+  <!-- Allows for coffeescript compiling on the fly.                                    -->
+  <!-- Not recommended for production use. See http://coffeescript.org/#scripts.        -->
   <script src="lib/coffeescript/coffee-script.js"></script>
+  <script src="lib/dom_text_mapper/dom_text_mapper.coffee" type="text/coffeescript"></script>
+  <script src="lib/dom_text_mapper/dom_text_mapper_angular.coffee" type="text/coffeescript"></script>
+  <script src="lib/dom_text_matcher/dom_text_hiliter.coffee" type="text/coffeescript"></script>
+  <script src="lib/dom_text_matcher/dom_text_matcher_angular.coffee" type="text/coffeescript"></script>
+  <script src="lib/magic_range/range.coffee" type="text/coffeescript"></script>
+  <script src="lib/magic_range/more_magic.coffee" type="text/coffeescript"></script>
+
+  <script src="coffee/wait_indicator.coffee" type="text/coffeescript"></script>
+  <script src="coffee/services.coffee" type="text/coffeescript"></script>
+  <script src="coffee/directives.coffee" type="text/coffeescript"></script>
+  <script src="coffee/filters.coffee" type="text/coffeescript"></script>
+  <script src="coffee/controllers.coffee" type="text/coffeescript"></script>
   <script src="coffee/app.coffee" type="text/coffeescript"></script>
 
-  <!--  <script src="coffee/app.js"></script> -->
 
     <!-- TODO: make this into a directive -->
     <div id="wait-indicator-dialog" class="modal hide" tabindex="-1" role="dialog" aria-labelledby="waitTitleLabel" aria-hidden="true">

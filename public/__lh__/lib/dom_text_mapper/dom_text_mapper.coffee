@@ -74,7 +74,7 @@ class window.DomTextMapper
     @allPaths = @collectPathsForNode @pathStartNode
     @restoreSelection()
     @lastCollectedPaths = @timestamp()
-#    console.log "Path traversal took " + (@lastCollectedPaths - startTime) + " ms."
+    console.log "Path traversal took " + (@lastCollectedPaths - startTime) + " ms."
     if @restricted
       @cleanPaths = {}
       for path, info of @allPaths
