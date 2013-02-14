@@ -5,7 +5,7 @@ class GenController
   AUTO_LOGIN = true
   AUTO_URL = true
   AUTO_LOAD_ON_LOGIN = true
-  AUTO_ANNOTATE = false
+  AUTO_ANNOTATE = true # false 
   AUTO_SAVE = false
 
   BORDER_CHARS = " ,.!?+-/*()$%&;:"
@@ -37,7 +37,6 @@ class GenController
       @minLength=3
       @maxLength=50
       @selectWholeWords = true
-      @annotationBodyText = "AUTO-GENERATED TEST ANNOTATION"
       @devMode = document.location.hostname is "localhost"
       @targetServer = "h3"
       if @devMode and AUTO_URL then @wantedURL = "http://en.wikipedia.org/wiki/Criteria_of_truth"
@@ -211,6 +210,7 @@ class GenController
           results.push parseInt k
       results
 
+        
     $scope.generateAnnotations = ->
       @hiliter.undo @task
 
@@ -221,35 +221,61 @@ class GenController
 
       @wait.set "Generating…", "Please wait while generating the annotations!"
       @anchors = (len:l, start:@getRandomInt 0, maxLen - l for l in @getLengths())
-      console.log "Set wait:"
-      $timeout (=>
-        console.log "Start generating"
-        for anchor in @anchors
-          anchor.end = anchor.start + anchor.len        
-          if @selectWholeWords
-            while anchor.start and (BORDER_CHARS.indexOf cont[anchor.start - 1]) is -1
-              anchor.start -= 1
-            while anchor.end < maxLen and (BORDER_CHARS.indexOf cont[anchor.end]) is -1
-              anchor.end += 1
+# hard-wired test case for missing text range
+#      @anchors = [
+#        start: 4581
+#        len: 1
+#      ]
+
+      @calculateAnchor 0, cont, maxLen, offset
+
+    $scope.calculateAnchor = (i, cont, maxLen, offset) ->
+      anchorsLeft = @anchors.length - i
+      if @wait.olderThan 1000
+        @wait.set "Generating…", "Please wait while calculating anchor positions! (" + anchorsLeft + " more to go.)"
+      $timeout =>  
+        anchor = $scope.anchors[i]
+        anchor.end = anchor.start + anchor.len        
+        until anchor.mappings?
+          try
+            if $scope.selectWholeWords
+              originalStart = anchor.start
+              originalEnd = anchor.end      
+              while anchor.start and (BORDER_CHARS.indexOf cont[anchor.start - 1]) is -1
+                anchor.start -= 1
+              while anchor.end < maxLen and (BORDER_CHARS.indexOf cont[anchor.end]) is -1
+                anchor.end += 1
             anchor.len = anchor.end - anchor.start
-          anchor.text = cont.substr anchor.start, anchor.len
-          console.log "Anchor text: '" + anchor.text + "'"
-          anchor.startGlobal = anchor.start + offset
-          anchor.endGlobal = anchor.end + offset
-          anchor.mappings = @domMapper.getMappingsForRange anchor.startGlobal, anchor.endGlobal
-          anchor.magicRange = @getMagicRange anchor.mappings
-#        console.log "Now should restore DOM & data cache integrity..."
-          @domMapper.documentChanged()
-          @paths = @domMapper.getAllPaths()
-          @domMapper.scan()
-#        console.log "Data updated."        
-#        console.log anchor.mappings
+            anchor.text = cont.substr anchor.start, anchor.len
+#        console.log "Anchor text: '" + anchor.text + "'"
+            anchor.startGlobal = anchor.start + offset
+            anchor.endGlobal = anchor.end + offset
+            anchor.mappings = $scope.domMapper.getMappingsForRange anchor.startGlobal, anchor.endGlobal
+          catch error
+            console.log "Oops.. chosen a range which has a mistery source: [" + anchor.startGlobal + ":" + anchor.endGlobal + "]: " + anchor.text
+            console.log "That won't work, for now. Just choose something else."
+            if $scope.selectWholeWords
+              anchor.start = originalStart
+              anchor.end = originalEnd
+            anchor.start += 10
+            anchor.end += 10
+        
+        anchor.magicRange = $scope.getMagicRange anchor.mappings
+        $scope.domMapper.performUpdateOnNode anchor.mappings.safeParent
+#          @domMapper.documentChanged()
+#          @paths = @domMapper.getAllPaths()
+#          @domMapper.scan()
+        if anchorsLeft isnt 1 then $scope.calculateAnchor i + 1, cont, maxLen, offset else $scope.allAnchorsCalculated()
+
+    $scope.allAnchorsCalculated = ->
+      @wait.set "Generating…", "All anchor positions calculated. Finishing up annotations..."
+      $timeout =>
         console.log "Now re-calculating native mapping info for updated DOM structure..."
         for anchor in @anchors
           anchor.mappings = @domMapper.getMappingsForRange anchor.startGlobal, anchor.endGlobal
         console.log "Done."        
         
-        console.log "Generated anchors."
+#        console.log "Generated anchors."
 #      console.log @anchors
 
         @annotations = (@createAnnotation anchor for anchor in @anchors)
@@ -261,8 +287,7 @@ class GenController
         @task = ranges: (nodes: anchor.mappings.nodes for anchor in @anchors)
         @hiliter.highlight @task
 
-        if @devMode and AUTO_SAVE then @saveAnnotations()
-      ), 1000
+      if @devMode and AUTO_SAVE then @saveAnnotations()
 
     $scope.getMagicRange = (mapping) ->
 #      console.log "Creating magic range for this mapping: "
@@ -300,7 +325,7 @@ class GenController
 #          endOffset: anchor.mappings.rangeInfo.endOffset
 #        ]
         user: "acct:" + @serverUser + "@" + @serverHost + ":" + @serverPort
-        text: @annotationBodyText
+        text: "All I have to say about '" + anchor.text + "' is that this is an auto-generated annotation, so I have no idea about it."
         permissions:
           read: []
           admin: []
