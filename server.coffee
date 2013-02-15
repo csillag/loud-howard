@@ -1,5 +1,6 @@
 express = require 'express'
 http = require 'http'
+https = require 'https'
 path = require 'path'
 httpProxy = require 'http-proxy'
 url = require 'url'
@@ -12,7 +13,7 @@ class AnnoStorage
 
   constructor: ->
 
-  login: (hHost, hPort, userName, passWord, cb, cookies=null) ->
+  login: (hProtocol, hHost, hPort, userName, passWord, cb, cookies=null) ->
         
     data = "__formid__=login&username=" + userName + "&password=" + passWord
 
@@ -30,54 +31,66 @@ class AnnoStorage
       options.headers["X-XSRF-TOKEN"] = xsrf
       options.headers["Cookie"] = SID + "=" + cookies[SID] + "; XSRF-TOKEN=" + xsrf
    
-#    console.log "Sending request: "
-#    console.log options
-#    console.log data
+    console.log "Sending request: "
+    console.log options
+    console.log data
 
-    req = http.request options, (res) =>
-#      console.log "Status: " + res.statusCode
-#      console.log "Headers"
-#      console.log res.headers
-      res.on 'data', (chunk) =>
-        try
-          result = JSON.parse chunk
-        catch error
-          console.log "Server responded with invalid JSON. We have sent this: "
-          console.log options
-          console.log "Got this:"
-          console.log chunk
-          cb status: INTERR
-        if result? then switch result.status
-          when "okay"
-#            console.log "SUCCESS!!!"
-#            console.log result
-            cb {status: "success", token: result.model.token}
-          when "failure"
-            if result.error?.csrf_token?
-#              console.log "OK, we need fix CSRF..."
-              cookies = {}
-              for c in res.headers["set-cookie"]
-                ps1 = c.split "="
-                cookies[ps1[0]] = (ps1[1].split ";")[0]
-#              console.log cookies
-              @login hHost, hPort, userName, passWord, cb, cookies
-            else if result.reason is BADPW
-#              console.log "Password is wrong."
-              cb status: "bad password"
-            else
-              console.log "Unknown error: "
-              console.log result
+    channel = switch hProtocol
+      when "http" then http
+      when "https" then https
+      else null
+
+    req = channel.request options, (res) =>
+      switch res.statusCode
+        when 301
+          location = res.headers["location"]
+          console.log "Should use " + location + " instead."
+          cb status: INTERR                
+        when 200
+          res.on 'data', (chunk) =>
+#        console.log
+            try
+              result = JSON.parse chunk
+              console.log "Got answer: "
+              console.log chunk.toString()
+            catch error
+              console.log "Server responded with invalid JSON. We have sent this: "
+              console.log options
+              console.log "Got this:"
+              console.log chunk
+              console.log chunk.toString()
               cb status: INTERR
-          else
-            console.log "Unknown status: "
-            console.log result
-            cb status: INTERR
+            if result? then switch result.status
+              when "okay"
+#                console.log "SUCCESS!!!"
+#                console.log result
+                cb {status: "success", token: result.model.token}
+              when "failure"
+                if result.error?.csrf_token?
+#                  console.log "OK, we need fix CSRF..."
+                  cookies = {}
+                  for c in res.headers["set-cookie"]
+                    ps1 = c.split "="
+                    cookies[ps1[0]] = (ps1[1].split ";")[0]
+#                  console.log cookies
+                  @login hProtocol, hHost, hPort, userName, passWord, cb, cookies
+                else if result.reason is BADPW
+#                  console.log "Password is wrong."
+                  cb status: "bad password"
+                else
+                  console.log "Unknown error: "
+                  console.log result
+                  cb status: INTERR
+              else
+                console.log "Unknown status: "
+                console.log result
+                cb status: INTERR
+        else
+          console.log "Received unknown status: " + res.statusCode
+          console.log "Headers:"
+          console.log res.headers
+          cb status: INTERR           
 
-#        console.log d
-#        if chunk is E1
-           
-#        console.log 'BODY: ' + chunk
-#      console.log "Skipping body: " + chunk.length + " chars."
 
     req.on 'error', (e) ->
       console.log 'problem with request: ' + e.message
@@ -121,6 +134,7 @@ app.configure 'development', -> app.use express.errorHandler()
 app.get LH_PATH + '/loading', (req, res) -> res.send "Loading..."
 
 app.get LH_PATH + "/login_status", (req, res) -> res.send
+  protocol: req.session.hProtocol ? "none"
   host: req.session.hHost ? "none"
   port: req.session.hPort ? "none"
   user: req.session.hUser ? "none"
@@ -129,10 +143,11 @@ app.get LH_PATH + "/login_status", (req, res) -> res.send
 app.post LH_PATH + '/login', (req, res) ->
   console.log "Should login:"
   console.log req.body
-  storage.login req.body.host, req.body.port, req.body.user, req.body.pass, (result) ->
+  storage.login req.body.protocol, req.body.host, req.body.port, req.body.user, req.body.pass, (result) ->
     console.log "Login result: "
     console.log result
     if result.status is "success"
+      req.session.hProtocol = req.body.protocol
       req.session.hHost = req.body.host
       req.session.hPort = req.body.port
       req.session.hUser = req.body.user
@@ -140,6 +155,7 @@ app.post LH_PATH + '/login', (req, res) ->
     res.send result
 
 app.post LH_PATH + '/logout', (req, res) ->
+  delete req.session.hProtocol
   delete req.session.hHost
   delete req.session.hPort
   delete req.session.hUser

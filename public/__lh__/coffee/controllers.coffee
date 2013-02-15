@@ -2,10 +2,10 @@
 
 class GenController
 
-  AUTO_LOGIN = true
+  AUTO_LOGIN = false
   AUTO_URL = true
   AUTO_LOAD_ON_LOGIN = true
-  AUTO_ANNOTATE = true # false 
+  AUTO_ANNOTATE = false
   AUTO_SAVE = false
 
   BORDER_CHARS = " ,.!?+-/*()$%&;:"
@@ -38,9 +38,16 @@ class GenController
       @maxLength=50
       @selectWholeWords = true
       @devMode = document.location.hostname is "localhost"
-      @targetServer = "h3"
-      if @devMode and AUTO_URL then @wantedURL = "http://en.wikipedia.org/wiki/Criteria_of_truth"
+      @targetServer = "dev"
+      if @devMode and AUTO_URL
+        @wantedURL = "http://en.wikipedia.org/wiki/Criteria_of_truth"
+#        @wantedURL = "http://hup.hu"
+#        @wantedURL = "http://hup.hu/cikkek/20130213/mloc-js_elo_videokozvetites_csak_a_hwsw-n"
       console.log "Dev mode is " + @devMode
+  
+      if @devMode and AUTO_LOGIN
+        $scope.loginUser = "csillag" #"LoudHoward2"
+        $scope.loginPass = "lemmehelp" #"lemmeshout"
 
     $scope.init()
 
@@ -226,10 +233,17 @@ class GenController
 #        start: 4581
 #        len: 1
 #      ]
+#
+ # hard-wired test case for missing text range
+#      @anchors = [
+#        start: 2613
+#        len: 35
+#      ]
 
       @calculateAnchor 0, cont, maxLen, offset
 
     $scope.calculateAnchor = (i, cont, maxLen, offset) ->
+#      console.log "Calculating anchor #" + i
       anchorsLeft = @anchors.length - i
       if @wait.olderThan 1000
         @wait.set "Generating…", "Please wait while calculating anchor positions! (" + anchorsLeft + " more to go.)"
@@ -247,10 +261,13 @@ class GenController
                 anchor.end += 1
             anchor.len = anchor.end - anchor.start
             anchor.text = cont.substr anchor.start, anchor.len
-#        console.log "Anchor text: '" + anchor.text + "'"
+#            console.log "Anchor text: '" + anchor.text + "'"
+#            console.log "Anchor: "
+#            console.log anchor
             anchor.startGlobal = anchor.start + offset
             anchor.endGlobal = anchor.end + offset
             anchor.mappings = $scope.domMapper.getMappingsForRange anchor.startGlobal, anchor.endGlobal
+#            console.log "Got mappings."
           catch error
             console.log "Oops.. chosen a range which has a mistery source: [" + anchor.startGlobal + ":" + anchor.endGlobal + "]: " + anchor.text
             console.log "That won't work, for now. Just choose something else."
@@ -261,7 +278,9 @@ class GenController
             anchor.end += 10
         
         anchor.magicRange = $scope.getMagicRange anchor.mappings
+#        console.log "Got magic."
         $scope.domMapper.performUpdateOnNode anchor.mappings.safeParent
+#        console.log "Updated cache."
 #          @domMapper.documentChanged()
 #          @paths = @domMapper.getAllPaths()
 #          @domMapper.scan()
@@ -334,8 +353,10 @@ class GenController
       }
 
     $scope.getLoginStatus = ->
-      console.log "Checking login status..."
+#      console.log "Checking login status..."
       $http.get(LH_PATH + "/login_status").success (result) =>
+#        console.log result
+        @serverProtocol = result.protocol
         @serverHost = result.host
         @serverPort = result.port
         @serverUser = result.user
@@ -343,19 +364,21 @@ class GenController
           [@serverUser + "/" + @serverHost + ":" + @serverPort, result.token]
         else
           [null, null]
-        if @persona? and @devMode and AUTO_LOAD_ON_LOGIN
-          $scope.urlEdited()
+        if not @persona? and @devMode and AUTO_LOGIN then @tryLogin()
+        if @persona? and @devMode and AUTO_LOAD_ON_LOGIN then @urlEdited()
 
     $scope.logout = ->
       $http.post(LH_PATH + "/logout").success => @getLoginStatus()
       @hiliter.undo @task
+      delete @offeredPaths  
       delete @annotations
       delete @anchors
       delete @paths
       delete @sourceURL
         
-    $scope.login = (hHost, hPort, userName, passWord) ->
+    $scope.login = (hProtocol, hHost, hPort, userName, passWord) ->
       loginData =
+        protocol: hProtocol
         host: hHost
         port: hPort
         user: userName
@@ -367,20 +390,20 @@ class GenController
           when "bad password" then alert "Invalid username or password."
           when "internal error" then alert "Could not log you in due to an internal error. Sorry."
           when "success"
-             console.log "Login succeeded."
+#             console.log "Login succeeded."
              @getLoginStatus()
           else alert "Could not unterstand the server's answer. Sorry"
 
     $scope.tryLogin = ->
-      console.log "Logging in to " + @targetServer
-      [host, port] = switch @targetServer
-        when "localhost" then ["localhost", 5000]
-        when "h3" then ["h3.nolmecolindor.com", 80]
-        when "dev" then ["dev.hypothes.is", 80]
-        when "test" then ["test.hypothes.is", 80]
-        else [null, null]
+#      console.log "Logging in to " + @targetServer
+      [protocol, host, port] = switch @targetServer
+        when "localhost" then ["http", "localhost", 5000]
+        when "h3" then ["http", "h3.nolmecolindor.com", 80]
+        when "dev" then ["https", "dev.hypothes.is", 443]
+        when "test" then ["https", "test.hypothes.is", 443]
+        else [null, null, null]
       if host?
-        @login host, port, @loginUser, @loginPass
+        @login protocol, host, port, @loginUser, @loginPass
       else
         console.log "Unknown target server " + @targetServer
 
@@ -395,7 +418,7 @@ class GenController
 
     $scope.saveAnnotation = (annotation) ->
       console.log "Sending save request..."
-      url = "http://" + @serverHost + ":" + @serverPort + "/api/current/annotations"
+      url = @serverProtocol + "://" + @serverHost + ":" + @serverPort + "/api/current/annotations"
       $http.post(url, annotation)
 #        .success (data, status, headers, config) =>
         .success (data) =>
@@ -430,12 +453,7 @@ class GenController
 
     $scope.getLoginStatus()
 
-    if @devMode and AUTO_LOGIN
-       $scope.loginUser = "LoudHoward2"
-       $scope.loginPass = "lemmeshout"
 
-#      $scope.login "localhost", 5000, "LoudHoward2", "lemmeshout"
-#      $scope.login "hypotest", 8000, "LoudHoward2", "lemmeshout", (res) ->
 
 angular.module('loudHoward.controllers', [])
   .controller("GenController", GenController)
