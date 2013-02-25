@@ -38,12 +38,12 @@ class GenController
       @maxLength=50
       @selectWholeWords = true
       @devMode = document.location.hostname is "localhost"
-      @targetServer = "dev"
+      @targetServer = "h3" # "dev"
       if @devMode and AUTO_URL
         @wantedURL = "http://en.wikipedia.org/wiki/Criteria_of_truth"
-#        @wantedURL = "http://hup.hu"
-#        @wantedURL = "http://hup.hu/cikkek/20130213/mloc-js_elo_videokozvetites_csak_a_hwsw-n"
-      console.log "Dev mode is " + @devMode
+#       @wantedURL = "http://hup.hu"
+#        @wantedURL = "http://hup.hu/cikkek/20130218/itt_a_sputnik_2_megerkezett_a_dell_fejlesztoknek_szant_frissitett_ubuntus_ultrabookja"
+#      console.log "Dev mode is " + @devMode
   
       if @devMode and AUTO_LOGIN
         $scope.loginUser = "csillag" #"LoudHoward2"
@@ -154,7 +154,6 @@ class GenController
           $scope.domMapper.documentChanged()        
           delete $scope.paths
           delete $scope.selectedPath
-          delete $scope.selectedPathData
           $scope.checkPaths()
         else
           $scope.wait.finished()
@@ -188,7 +187,6 @@ class GenController
       @hiliter.undo @task
       delete @annotations
       delete @anchors        
-      @selectedPathData = @paths[@selectedPath]
       if @selectedPath isnt "/HTML/BODY" then @domMapper.selectPath @selectedPath, true
       @wait.finished()
       if @devMode and AUTO_ANNOTATE then @generateAnnotations()
@@ -221,25 +219,17 @@ class GenController
     $scope.generateAnnotations = ->
       @hiliter.undo @task
 
-      cont = @selectedPathData.content
-      maxLen = @selectedPathData.length
+      cont = @domMapper.getContentForPath @selectedPath
+      maxLen = @domMapper.getLengthForPath @selectPath
       range = @domMapper.getRangeForPath @selectedPath
       offset = range.start
 
       @wait.set "Generating…", "Please wait while generating the annotations!"
       @anchors = (len:l, start:@getRandomInt 0, maxLen - l for l in @getLengths())
-# hard-wired test case for missing text range
-#      @anchors = [
-#        start: 4581
+#      @anchors = [{
+#        start: 6504
 #        len: 1
-#      ]
-#
- # hard-wired test case for missing text range
-#      @anchors = [
-#        start: 2613
-#        len: 35
-#      ]
-
+#      }]
       @calculateAnchor 0, cont, maxLen, offset
 
     $scope.calculateAnchor = (i, cont, maxLen, offset) ->
@@ -249,33 +239,41 @@ class GenController
         @wait.set "Generating…", "Please wait while calculating anchor positions! (" + anchorsLeft + " more to go.)"
       $timeout =>  
         anchor = $scope.anchors[i]
-        anchor.end = anchor.start + anchor.len        
+        anchor.end = anchor.start + anchor.len
+        originalStart = anchor.start
+        originalEnd = anchor.end
+        forcedOffset = 0
         until anchor.mappings?
           try
+#            console.log anchor                
             if $scope.selectWholeWords
-              originalStart = anchor.start
-              originalEnd = anchor.end      
               while anchor.start and (BORDER_CHARS.indexOf cont[anchor.start - 1]) is -1
                 anchor.start -= 1
               while anchor.end < maxLen and (BORDER_CHARS.indexOf cont[anchor.end]) is -1
                 anchor.end += 1
             anchor.len = anchor.end - anchor.start
-            anchor.text = cont.substr anchor.start, anchor.len
+            anchor.text = $scope.domMapper.getContentForRange anchor.start, anchor.end, @selectedPath
+            
+            if anchor.text.trim() is ""
+              # The selected range contains only whitespace. Won't work. Move the range a bit.
+              anchor.start += 1
+              anchor.end += 1
+            else
 #            console.log "Anchor text: '" + anchor.text + "'"
 #            console.log "Anchor: "
 #            console.log anchor
-            anchor.startGlobal = anchor.start + offset
-            anchor.endGlobal = anchor.end + offset
-            anchor.mappings = $scope.domMapper.getMappingsForRange anchor.startGlobal, anchor.endGlobal
+              anchor.startGlobal = anchor.start + offset
+              anchor.endGlobal = anchor.end + offset
+              anchor.mappings = $scope.domMapper.getMappingsForRange anchor.startGlobal, anchor.endGlobal
+              [anchor.prefix, anchor.suffix] = $scope.domMapper.getContextForRange anchor.startGlobal, anchor.endGlobal
 #            console.log "Got mappings."
           catch error
+#            console.log error
             console.log "Oops.. chosen a range which has a mistery source: [" + anchor.startGlobal + ":" + anchor.endGlobal + "]: " + anchor.text
             console.log "That won't work, for now. Just choose something else."
-            if $scope.selectWholeWords
-              anchor.start = originalStart
-              anchor.end = originalEnd
-            anchor.start += 10
-            anchor.end += 10
+            forcedOffset += 10
+            anchor.start = originalStart + forcedOffset
+            anchor.end = originalEnd + forcedOffset
         
         anchor.magicRange = $scope.getMagicRange anchor.mappings
 #        console.log "Got magic."
@@ -295,11 +293,11 @@ class GenController
         console.log "Done."        
         
 #        console.log "Generated anchors."
-#      console.log @anchors
+#        console.log @anchors
 
         @annotations = (@createAnnotation anchor for anchor in @anchors)
         console.log "Generated annotations."
-#      console.log @annotations
+        console.log @annotations
 
         @wait.finished() 
 
@@ -320,10 +318,12 @@ class GenController
 #      console.log magicRange
       magicRange
 
-    $scope.transformForStorage = (r) ->
+    $scope.getXPathRangeSelector = (source, r) ->
       result =
-        end: r.end.substr PATH_PREFIX_LENGTH
-        start: r.start.substr PATH_PREFIX_LENGTH
+        source: source
+        type: "xpath range"
+        startXpath: r.start.substr PATH_PREFIX_LENGTH        
+        endXpath: r.end.substr PATH_PREFIX_LENGTH
         startOffset: r.startOffset
         endOffset: r.endOffset
 
@@ -332,17 +332,26 @@ class GenController
       {
         updated: ts
         created: ts
-        quote: anchor.text
         uri: @wantedURL
-        ranges: [
-          @transformForStorage anchor.magicRange
-        ]
-#        ranges: [
-#          start: @transformPath anchor.mappings.rangeInfo.startPath
-#          end: @transformPath anchor.mappings.rangeInfo.endPath
-#          startOffset: anchor.mappings.rangeInfo.startOffset
-#          endOffset: anchor.mappings.rangeInfo.endOffset
-#        ]
+        target: {
+          id: "",
+          selector: [
+            $scope.getXPathRangeSelector(@wantedURL, anchor.magicRange),
+            {
+              source: @wantedURL
+              type: "position"
+              start: anchor.start
+              end: anchor.end
+            },
+            {
+              source: @wantedURL
+              type: "context+quote"
+              exact: anchor.text
+              prefix: anchor.prefix
+              suffix: anchor.suffix
+            }
+          ]
+        },
         user: "acct:" + @serverUser + "@" + @serverHost + ":" + @serverPort
         text: "All I have to say about '" + anchor.text + "' is that this is an auto-generated annotation, so I have no idea about it."
         permissions:
