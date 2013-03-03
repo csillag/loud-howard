@@ -162,8 +162,7 @@ class GenController
     $scope.checkPaths = ->
       # wait for the browser to render the DOM for the new HTML
       $timeout =>
-        @paths ?= @domMapper.getAllPaths()
-        @domMapper.scan()
+        @paths or= @domMapper.scan()
         @filterPathCandidates()
         if @selectedPath in @offeredPaths
           @prepareSelectedPath()
@@ -219,10 +218,11 @@ class GenController
     $scope.generateAnnotations = ->
       @hiliter.undo @task
 
-      cont = @domMapper.getContentForPath @selectedPath
-      maxLen = @domMapper.getLengthForPath @selectPath
-      range = @domMapper.getRangeForPath @selectedPath
-      offset = range.start
+      pathInfo = @domMapper.getInfoForPath @selectedPath
+
+      offset = pathInfo.start
+      cont = pathInfo.content
+      maxLen = pathInfo.length
 
       @wait.set "Generating…", "Please wait while generating the annotations!"
       @anchors = (len:l, start:@getRandomInt 0, maxLen - l for l in @getLengths())
