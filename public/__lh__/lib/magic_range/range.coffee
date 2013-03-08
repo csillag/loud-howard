@@ -128,34 +128,43 @@ class window.magic.Range.BrowserRange
       if node.nodeType is 1
         # Get specified node.
         it = node.childNodes[offset]
+
         # If it doesn't exist, that means we need the end of the
         # previous one.
         node = it or node.childNodes[offset - 1]
 
+        # Is it an IMG?
+        img = node.nodeType is 1 and node.tagName.toLowerCase() is "img"
+        
         # if node doesn't have any children, it's a <br> or <hr> or
         # other self-closing tag, and we actually want the textNode
-        # that ends just before it
-        if node.nodeType is 1 and not node.firstChild
+        # that ends just before it.
+        # Unless it's an IMG, which we might want to keep.
+        if node.nodeType is 1 and not node.firstChild and not img
           it = null # null out ref to node so offset is correctly calculated below.
           node = node.previousSibling
 
-        # textNode nodeType == 3
-        while node.nodeType isnt 3
-          node = node.firstChild
+        if img
+          offset = 0
+        else
+          # textNode nodeType == 3
+          while node.nodeType isnt 3
+            node = node.firstChild
 
-        offset = if it then 0 else node.nodeValue.length
+          offset = if it then 0 else node.nodeValue.length
 
       r[p] = node
       r[p + 'Offset'] = offset
+      r[p + 'Img'] = img
 
     nr.start = if r.startOffset > 0 then r.start.splitText(r.startOffset) else r.start
 
-    if r.start is r.end
+    if r.start is r.end and not r.startImg
       if (r.endOffset - r.startOffset) < nr.start.nodeValue.length
         nr.start.splitText(r.endOffset - r.startOffset)
       nr.end = nr.start
     else
-      if r.endOffset < r.end.nodeValue.length
+      if not r.endImg and r.endOffset < r.end.nodeValue.length
         r.end.splitText(r.endOffset)
       nr.end = r.end
 
@@ -262,7 +271,9 @@ class window.magic.Range.NormalizedRange
       for n in nodes
         offset += n.nodeValue.length
 
-      if isEnd then [xpath, offset + node.nodeValue.length] else [xpath, offset]
+      isImg = node.nodeType is 1 and node.tagName.toLowerCase() is "img"
+
+      if isEnd and not isImg then [xpath, offset + node.nodeValue.length] else [xpath, offset]
 
     start = serialization(@start)
     end   = serialization(@end, true)

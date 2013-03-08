@@ -111,7 +111,10 @@ class window.DomTextMatcher
   # 
   # For the details about the returned data structure, see the documentation of the search() method.
   searchFuzzy: (pattern, pos, caseSensitive = false, matchDistance = 1000, matchThreshold = 0.5, path = null) ->
-    if not @dmp? then @dmp = new window.DTM_DMPMatcher
+    unless @dmp?
+      unless window.DTM_DMPMatcher?
+        throw new Error "DTM_DMPMatcher is not available. Have you loaded the text match engines?"
+      @dmp = new window.DTM_DMPMatcher
     @dmp.setMatchDistance matchDistance
     @dmp.setMatchThreshold matchThreshold
     @dmp.setCaseSensitive caseSensitive
@@ -146,7 +149,7 @@ class window.DomTextMatcher
     unless pattern? then throw new Error "Can't search an for empty pattern!"
 
     # Do some preparation, if required
-    t0 = @timestamp()# 
+    t0 = @timestamp()
     if path? then @scan()
     t1 = @timestamp()
 
@@ -165,23 +168,27 @@ class window.DomTextMatcher
     matches = []
     for match in textMatches
       do (match) =>
-        matches.push $.extend {}, match, @analyzeMatch(pattern, match), @mapper.getMappingsForRange(match.start, match.end)
+        analysis = @analyzeMatch pattern, match
+        mappings = @mapper.getMappingsForCharRange match.start, match.end
+        newMatch = $.extend {}, match, analysis, mappings
+        matches.push newMatch
+        null
     t3 = @timestamp()
-    return {
+    result = 
       matches: matches
       time:
         phase0_domMapping: t1 - t0
         phase1_textMatching: t2 - t1
         phase2_matchMapping: t3 - t2
         total: t3 - t0
-    }
+    result
 
   timestamp: -> new Date().getTime()
 
+  # Read a match returned by the matcher engine, and compare it with the pattern.
   analyzeMatch: (pattern, match) ->
     found = @mapper.corpus.substr match.start, match.end-match.start
-    return {
+    result =
       found: found
       exact: found is pattern
-    }
 

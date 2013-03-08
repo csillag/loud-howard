@@ -139,7 +139,7 @@ class GenController
         
         console.log "URL loaded."
         $http.get(LH_PATH + "/get_redirection").success (data) =>
-          if data isnt ""
+          if data? and data isnt ""
             console.log "Was server-redirected to " + data
             @tryingToLoad = true
             $scope.wantedURL = data
@@ -225,11 +225,7 @@ class GenController
       maxLen = pathInfo.length
 
       @wait.set "Generating…", "Please wait while generating the annotations!"
-      @anchors = (len:l, start:@getRandomInt 0, maxLen - l for l in @getLengths())
-#      @anchors = [{
-#        start: 6504
-#        len: 1
-#      }]
+      @anchors = (len:l for l in @getLengths())
       @calculateAnchor 0, cont, maxLen, offset
 
     $scope.calculateAnchor = (i, cont, maxLen, offset) ->
@@ -239,45 +235,40 @@ class GenController
         @wait.set "Generating…", "Please wait while calculating anchor positions! (" + anchorsLeft + " more to go.)"
       $timeout =>  
         anchor = $scope.anchors[i]
-        anchor.end = anchor.start + anchor.len
-        originalStart = anchor.start
-        originalEnd = anchor.end
-        forcedOffset = 0
         until anchor.mappings?
           try
+            anchor.start = @getRandomInt 0, maxLen - anchor.len
+            anchor.end = anchor.start + anchor.len                        
 #            console.log anchor                
             if $scope.selectWholeWords
-              while anchor.start and (BORDER_CHARS.indexOf cont[anchor.start - 1]) is -1
+              while anchor.start > 0 and (BORDER_CHARS.indexOf cont[anchor.start - 1]) is -1
                 anchor.start -= 1
               while anchor.end < maxLen and (BORDER_CHARS.indexOf cont[anchor.end]) is -1
                 anchor.end += 1
             anchor.len = anchor.end - anchor.start
-            anchor.text = $scope.domMapper.getContentForRange anchor.start, anchor.end, @selectedPath
-            
-            if anchor.text.trim() is ""
-              # The selected range contains only whitespace. Won't work. Move the range a bit.
-              anchor.start += 1
-              anchor.end += 1
-            else
+            anchor.text = $scope.domMapper.getContentForCharRange anchor.start, anchor.end, @selectedPath
+
+            # Check whether selected range contains only whitespace.
+            if anchor.text.trim() isnt ""
+
 #            console.log "Anchor text: '" + anchor.text + "'"
 #            console.log "Anchor: "
 #            console.log anchor
               anchor.startGlobal = anchor.start + offset
               anchor.endGlobal = anchor.end + offset
-              anchor.mappings = $scope.domMapper.getMappingsForRange anchor.startGlobal, anchor.endGlobal
-              [anchor.prefix, anchor.suffix] = $scope.domMapper.getContextForRange anchor.startGlobal, anchor.endGlobal
-#            console.log "Got mappings."
+              anchor.mappings = $scope.domMapper.getMappingsForCharRange anchor.startGlobal, anchor.endGlobal
+              [anchor.prefix, anchor.suffix] = $scope.domMapper.getContextForCharRange anchor.startGlobal, anchor.endGlobal
+#              console.log "Got mappings."
+#              console.log anchor.mappings
+              anchor.magicRange = $scope.getSerializedMagicRange anchor.mappings.realRange
+#              console.log "Got magic."
+              $scope.domMapper.performUpdateOnNode anchor.mappings.safeParent
+#              console.log "Performed update."
           catch error
-#            console.log error
-            console.log "Oops.. chosen a range which has a mistery source: [" + anchor.startGlobal + ":" + anchor.endGlobal + "]: " + anchor.text
-            console.log "That won't work, for now. Just choose something else."
-            forcedOffset += 10
-            anchor.start = originalStart + forcedOffset
-            anchor.end = originalEnd + forcedOffset
-        
-        anchor.magicRange = $scope.getMagicRange anchor.mappings
-#        console.log "Got magic."
-        $scope.domMapper.performUpdateOnNode anchor.mappings.safeParent
+            console.log error
+            console.log "Oops.. chosen a charRange which has a mystery source: [" + anchor.startGlobal + ":" + anchor.endGlobal + "]: '" + anchor.text + "'. That won't work, for now. Just choose something else."
+
+
 #        console.log "Updated cache."
 #          @domMapper.documentChanged()
 #          @paths = @domMapper.getAllPaths()
@@ -289,34 +280,27 @@ class GenController
       $timeout =>
         console.log "Now re-calculating native mapping info for updated DOM structure..."
         for anchor in @anchors
-          anchor.mappings = @domMapper.getMappingsForRange anchor.startGlobal, anchor.endGlobal
+          anchor.mappings = @domMapper.getMappingsForCharRange anchor.startGlobal, anchor.endGlobal
         console.log "Done."        
         
 #        console.log "Generated anchors."
 #        console.log @anchors
 
         @annotations = (@createAnnotation anchor for anchor in @anchors)
-        console.log "Generated annotations."
-        console.log @annotations
+#        console.log "Generated annotations."
+#        console.log @annotations
 
         @wait.finished() 
 
-        @task = ranges: (nodes: anchor.mappings.nodes for anchor in @anchors)
+        @task = sections: (mappings: anchor.mappings.mappings for anchor in @anchors)
         @hiliter.highlight @task
 
       if @devMode and AUTO_SAVE then @saveAnnotations()
 
-    $scope.getMagicRange = (mapping) ->
-#      console.log "Creating magic range for this mapping: "
-#      console.log mapping
-      range = mapping.range
-#      console.log if range.startContainer is range.endContainer then "Simple-element range" else "Multi-element range"
-#      console.log range.startOffset + " - " + range.endOffset
-      browserRange = new magic.Range.BrowserRange range
-      magicRange = browserRange.serialize()
-#      console.log "Magic is: "
-#      console.log magicRange
-      magicRange
+    # Create a serialized magic range from a real (browser) range
+    $scope.getSerializedMagicRange = (realRange) ->
+      browserRange = new magic.Range.BrowserRange realRange
+      browserRange.serialize()
 
     $scope.getXPathRangeSelector = (source, r) ->
       result =
